@@ -1,223 +1,56 @@
-use std::sync::LazyLock;
+use iced::{Element, Font, Length, Task, widget::{column, container, row, text}};
+use iced_m3::theme::{ColorScheme, Mode, Theme};
 
-use fonts::{icons_filled, icons_outlined, text_regular};
-use iced::{
-    Alignment, Element, Font, Length, Task, padding,
-    widget::{column, container, row, text::IntoFragment},
-};
-use iced_m3::{
-    theme::{self, Accent, ColorScheme, Theme},
-    widget::{
-        Action, Badge, button,
-        hybrid_icon::Icon,
-        navrail::{self, Fab, Item, ItemAlignment, Mode},
-        switch,
-    },
-};
-
-const APP_NAME: &str = "Navigation Rail Demo";
-static STAR: LazyLock<char> = LazyLock::new(|| char::from_u32(0xe8d0).unwrap());
-static FAVORITE: LazyLock<char> = LazyLock::new(|| char::from_u32(0xe87d).unwrap());
-static SEARCH: LazyLock<char> = LazyLock::new(|| char::from_u32(0xe8b6).unwrap());
-static SETTINGS: LazyLock<char> = LazyLock::new(|| char::from_u32(0xe8b8).unwrap());
-static EDIT: LazyLock<char> = LazyLock::new(|| char::from_u32(0xe3c9).unwrap());
-
-#[derive(Clone, Copy, Default)]
-#[repr(usize)]
-enum Tab {
-    #[default]
-    Star,
-    Favorites,
-    Search,
-    Settings,
-}
-
-impl std::fmt::Display for Tab {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Tab::Star => write!(f, "Star"),
-            Tab::Favorites => write!(f, "Favorites"),
-            Tab::Search => write!(f, "Search"),
-            Tab::Settings => write!(f, "Settings"),
-        }
-    }
-}
-
-impl Tab {
-    fn index(self) -> usize {
-        self as usize
-    }
-}
+const APP_NAME: &str = "Navrail Demo";
 
 #[derive(Clone)]
 enum Message {
-    GoTo(Tab),
-    ToggleExpanded,
-    SetAlignment(ItemAlignment),
-    Noop,
-    ToggleMenu,
-    ToggleFAB,
+    Page(navrail::Message),
+    SetTheme(Mode),
 }
 
 struct State {
     theme: Theme,
-    tab: Tab,
-    expanded: bool,
-    fab: bool,
-    menu: bool,
-    alignment: ItemAlignment,
+    page: navrail::Page,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
-            theme: Theme::default(theme::Mode::Dark),
-            tab: Tab::default(),
-            expanded: false,
-            fab: true,
-            menu: true,
-            alignment: ItemAlignment::default(),
+            theme: Theme::default(Mode::Dark),
+            page: navrail::Page::default(),
         }
     }
 }
 
 impl State {
     fn view(&self) -> Element<'_, Message> {
-        let items = vec![
-            Item {
-                icon_active: Icon::Text {
-                    text: STAR.into_fragment(),
-                    font: Some(icons_filled()),
-                },
-                icon_inactive: Icon::Text {
-                    text: STAR.into_fragment(),
-                    font: Some(icons_outlined()),
-                },
-                badge: None,
-                label: "Star".into_fragment(),
-                on_press: Message::GoTo(Tab::Star),
-            },
-            Item {
-                icon_active: Icon::Text {
-                    text: FAVORITE.into_fragment(),
-                    font: Some(icons_filled()),
-                },
-                icon_inactive: Icon::Text {
-                    text: FAVORITE.into_fragment(),
-                    font: Some(icons_outlined()),
-                },
-                badge: Some(Badge { label: None }),
-                label: "Favorites".into_fragment(),
-                on_press: Message::GoTo(Tab::Favorites),
-            },
-            Item {
-                icon_active: Icon::Text {
-                    text: SEARCH.into_fragment(),
-                    font: Some(icons_filled()),
-                },
-                icon_inactive: Icon::Text {
-                    text: SEARCH.into_fragment(),
-                    font: Some(icons_outlined()),
-                },
-                badge: Some(Badge {
-                    label: Some("3".into_fragment()),
-                }),
-                label: "Search".into_fragment(),
-                on_press: Message::GoTo(Tab::Search),
-            },
-            Item {
-                icon_active: Icon::Text {
-                    text: SETTINGS.into_fragment(),
-                    font: Some(icons_filled()),
-                },
-                icon_inactive: Icon::Text {
-                    text: SETTINGS.into_fragment(),
-                    font: Some(icons_outlined()),
-                },
-                badge: Some(Badge {
-                    label: Some("999+".into_fragment()),
-                }),
-                label: "Settings".into_fragment(),
-                on_press: Message::GoTo(Tab::Settings),
-            },
-        ];
-        let current_index = self.tab.index();
-        let mode = match self.expanded {
-            true => Mode::Expanded {
-                width: iced::Pixels(navrail::CONTAINER_EXPANDED_MIN_WIDTH),
-            },
-            false => Mode::Collapsed,
-        };
-        let fab = Fab {
-            icon: Icon::Text {
-                text: EDIT.into_fragment(),
-                font: Some(icons_filled()),
-            },
-            label: "Edit".into_fragment(),
-            style: iced_m3::widget::fab::Style::fab_tonal(&self.theme, Accent::Primary),
-            on_press: Action::Direct(Message::Noop),
-        };
-
-        let navrail = iced_m3::widget::navrail(navrail::Style::new(&self.theme), items)
-            .active(current_index)
-            .label_font(text_regular())
-            .mode(mode)
-            .fab_maybe(self.fab.then_some(fab))
-            .item_alignment(self.alignment)
-            .on_menu_pressed_maybe(self.menu.then_some(|_| Message::ToggleExpanded));
-
-        let content = column![
-            iced::widget::text("Alignment").color(self.theme.on_surface()),
-            row![
-                button(
-                    button::Style::elevated(&self.theme, Accent::default()),
-                    button::Content::Label("Top".into())
-                )
-                .on_press(Message::SetAlignment(ItemAlignment::Top)),
-                button(
-                    button::Style::elevated(&self.theme, Accent::default()),
-                    button::Content::Label("Center".into())
-                )
-                .on_press(Message::SetAlignment(ItemAlignment::Center)),
-                button(
-                    button::Style::elevated(&self.theme, Accent::default()),
-                    button::Content::Label("Bottom".into())
-                )
-                .on_press(Message::SetAlignment(ItemAlignment::Bottom)),
-            ]
-            .spacing(8),
-            row![
-                iced::widget::text("Menu").color(self.theme.on_surface()),
-                switch(&self.theme, self.menu).on_toggle(Message::ToggleMenu)
-            ]
-            .align_y(Alignment::Center)
-            .spacing(8),
-            row![
-                iced::widget::text("Floating Action Button").color(self.theme.on_surface()),
-                switch(&self.theme, self.fab).on_toggle(Message::ToggleFAB)
-            ]
-            .align_y(Alignment::Center)
-            .spacing(8),
-            iced::widget::text(format!("Current tab: {}", self.tab)).color(self.theme.on_surface())
+        let theme_buttons = row![
+            iced_m3::widget::button(
+                iced_m3::widget::button::Style::filled(&self.theme, iced_m3::theme::Accent::Primary),
+                iced_m3::widget::button::Content::Label("Light".into()),
+            )
+            .on_press(Message::SetTheme(Mode::Light)),
+            iced_m3::widget::button(
+                iced_m3::widget::button::Style::filled(&self.theme, iced_m3::theme::Accent::Secondary),
+                iced_m3::widget::button::Content::Label("Dark".into()),
+            )
+            .on_press(Message::SetTheme(Mode::Dark)),
         ]
         .spacing(8);
 
-        container(column![
-            container(
-                iced::widget::text(APP_NAME)
+        container(
+            column![
+                text::Text::new(APP_NAME)
                     .font(fonts::text_bold())
-                    .size(24.0)
-                    .color(self.theme.on_surface())
-            )
-            .padding(10.0),
-            row![
-                container(navrail).style(|_| {
-                    iced::widget::container::Style::default()
-                        .background(self.theme.surface_container())
-                }),
-                container(content).padding(padding::horizontal(12))
-            ],
-        ])
+                    .size(28.0)
+                    .color(self.theme.on_surface()),
+                theme_buttons,
+                self.page.view(&self.theme).map(Message::Page),
+            ]
+            .spacing(24),
+        )
+        .padding(24.0)
         .width(Length::Fill)
         .height(Length::Fill)
         .style(|_| iced::widget::container::Style::default().background(self.theme.background()))
@@ -226,14 +59,14 @@ impl State {
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::GoTo(tab) => self.tab = tab,
-            Message::ToggleExpanded => self.expanded = !self.expanded,
-            Message::Noop => {}
-            Message::SetAlignment(item_alignment) => self.alignment = item_alignment,
-            Message::ToggleMenu => self.menu = !self.menu,
-            Message::ToggleFAB => self.fab = !self.fab,
+            Message::Page(msg) => self.page.update(msg),
+            Message::SetTheme(mode) => self.theme.mode = mode,
         }
         Task::none()
+    }
+
+    fn subscription(&self) -> iced::Subscription<Message> {
+        iced::Subscription::none()
     }
 }
 
@@ -254,5 +87,6 @@ fn main() -> iced::Result {
     )
     .title(APP_NAME)
     .default_font(Font::with_name("Noto Sans"))
+    .subscription(State::subscription)
     .run()
 }

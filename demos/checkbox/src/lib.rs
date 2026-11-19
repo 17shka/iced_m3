@@ -3,7 +3,6 @@ use iced::{
     widget::{column, row, text},
 };
 use iced_m3::{
-    animation::motion,
     theme::{ColorScheme, Theme},
     widget::{self, checkbox::Value},
 };
@@ -15,9 +14,7 @@ pub enum Message {
     Toggle3,
     Toggle4,
     Toggle5,
-    Toggle6,
-    Toggle7,
-    CycleState8,
+    CycleState,
 }
 
 pub struct Demo {
@@ -26,8 +23,6 @@ pub struct Demo {
     value3: Value,
     value4: Value,
     value5: Value,
-    value6: Value,
-    value7: Value,
     value8: Value,
 }
 
@@ -39,8 +34,6 @@ impl Default for Demo {
             value3: Value::Indeterminate,
             value4: Value::Unchecked,
             value5: Value::Checked,
-            value6: Value::Unchecked,
-            value7: Value::Checked,
             value8: Value::Unchecked,
         }
     }
@@ -98,21 +91,7 @@ impl Demo {
                     Value::Indeterminate => Value::Unchecked,
                 }
             }
-            Message::Toggle6 => {
-                self.value6 = match self.value6 {
-                    Value::Unchecked => Value::Checked,
-                    Value::Checked => Value::Unchecked,
-                    Value::Indeterminate => Value::Unchecked,
-                }
-            }
-            Message::Toggle7 => {
-                self.value7 = match self.value7 {
-                    Value::Unchecked => Value::Checked,
-                    Value::Checked => Value::Unchecked,
-                    Value::Indeterminate => Value::Unchecked,
-                }
-            }
-            Message::CycleState8 => {
+            Message::CycleState => {
                 self.value8 = match self.value8 {
                     Value::Unchecked => Value::Checked,
                     Value::Checked => Value::Indeterminate,
@@ -120,6 +99,10 @@ impl Demo {
                 }
             }
         }
+    }
+
+    pub fn subscription(&self) -> iced::Subscription<Message> {
+        iced::Subscription::none()
     }
 
     pub fn view(&self, theme: &Theme) -> Element<'_, Message> {
@@ -144,7 +127,7 @@ impl Demo {
             .spacing(12)
             .align_y(Alignment::Center),
             row![
-                widget::checkbox(theme, self.value8).on_toggle(Message::CycleState8),
+                widget::checkbox(theme, self.value8).on_toggle(Message::CycleState),
                 label(
                     "State cycler (Unchecked -> Checked -> Indeterminate)",
                     theme
@@ -205,34 +188,10 @@ impl Demo {
         ]
         .spacing(12);
 
-        let animation_section = column![
-            section_header("Animation", theme),
-            row![
-                widget::checkbox(theme, self.value6)
-                    .motion_scheme(motion::Scheme::Expressive)
-                    .on_toggle(Message::Toggle6),
-                label("Expressive animation", theme),
-            ]
-            .spacing(12)
-            .align_y(Alignment::Center),
-            row![
-                widget::checkbox(theme, self.value7)
-                    .motion_scheme(motion::Scheme::Standard)
-                    .on_toggle(Message::Toggle7),
-                label("Standard animation", theme),
-            ]
-            .spacing(12)
-            .align_y(Alignment::Center),
-        ]
-        .spacing(12);
-
-        column![
-            interactive_section,
-            disabled_section,
-            error_section,
-            animation_section,
-        ]
-        .spacing(24)
-        .into()
+        column![interactive_section, disabled_section, error_section,]
+            .spacing(24)
+            .into()
     }
 }
+
+pub type Page = Demo;

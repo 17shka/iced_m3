@@ -1,91 +1,65 @@
-use std::sync::LazyLock;
-
 use iced::{
     Element, Font, Length, Task,
-    widget::{column, container, row, text, text::IntoFragment},
+    widget::{column, container, row, text},
 };
-use iced_m3::{
-    theme::{Accent, ColorScheme, Theme},
-    widget::{
-        Action,
-        fab::{Content, Size, Style},
-        hybrid_icon::Icon,
-    },
-};
+use iced_m3::theme::{ColorScheme, Mode, Theme};
 
-const APP_NAME: &str = "FAB Demo";
-static EDIT: LazyLock<char> = LazyLock::new(|| char::from_u32(0xe3c9).unwrap());
+const APP_NAME: &str = "Fab Demo";
+
+#[derive(Clone)]
+enum Message {
+    Page(fab::Message),
+    SetTheme(Mode),
+}
 
 struct State {
     theme: Theme,
+    page: fab::Page,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
-            theme: Theme::default(iced_m3::theme::Mode::Dark),
+            theme: Theme::default(Mode::Dark),
+            page: fab::Page::default(),
         }
     }
 }
 
-#[derive(Clone)]
-enum Message {
-    Noop,
-}
-
 impl State {
     fn view(&self) -> Element<'_, Message> {
-        let styles = [
-            Style::fab_vibrant(&self.theme, Accent::Primary),
-            Style::fab_vibrant(&self.theme, Accent::Secondary),
-            Style::fab_vibrant(&self.theme, Accent::Tertiary),
-            Style::fab_tonal(&self.theme, Accent::Primary),
-            Style::fab_tonal(&self.theme, Accent::Secondary),
-            Style::fab_tonal(&self.theme, Accent::Tertiary),
-        ];
-        let sizes = [Size::Regular, Size::Medium, Size::Large];
-        let icon = Icon::Text {
-            text: EDIT.to_string().into_fragment(),
-            font: Some(fonts::icons_filled()),
-        };
-        let content = Content::Reguar { icon: icon.clone() };
-        let fabs = row(sizes.into_iter().map(|size| {
-            column(styles.into_iter().map(|style| {
-                iced_m3::widget::fab(style, content.clone(), Action::Direct(Message::Noop))
-                    .size(size)
-                    .into()
-            }))
-            .spacing(20.0)
-            .into()
-        }))
-        .spacing(20.0);
-
-        let content = Content::Extended {
-            icon,
-            label: "Compose".into(),
-        };
-        let extended_fabs = row(sizes.into_iter().map(|size| {
-            column(styles.into_iter().map(|style| {
-                iced_m3::widget::fab(style, content.clone(), Action::Direct(Message::Noop))
-                    .size(size)
-                    .into()
-            }))
-            .spacing(20.0)
-            .into()
-        }))
-        .spacing(20.0);
+        let theme_buttons = row![
+            iced_m3::widget::button(
+                iced_m3::widget::button::Style::filled(
+                    &self.theme,
+                    iced_m3::theme::Accent::Primary
+                ),
+                iced_m3::widget::button::Content::Label("Light".into()),
+            )
+            .on_press(Message::SetTheme(Mode::Light)),
+            iced_m3::widget::button(
+                iced_m3::widget::button::Style::filled(
+                    &self.theme,
+                    iced_m3::theme::Accent::Secondary
+                ),
+                iced_m3::widget::button::Content::Label("Dark".into()),
+            )
+            .on_press(Message::SetTheme(Mode::Dark)),
+        ]
+        .spacing(8);
 
         container(
             column![
-                text(APP_NAME)
+                text::Text::new(APP_NAME)
                     .font(fonts::text_bold())
-                    .size(24.0)
+                    .size(28.0)
                     .color(self.theme.on_surface()),
-                row![fabs, extended_fabs].spacing(20.0),
+                theme_buttons,
+                self.page.view(&self.theme).map(Message::Page),
             ]
-            .spacing(20.0),
+            .spacing(24),
         )
-        .padding(10.0)
+        .padding(24.0)
         .width(Length::Fill)
         .height(Length::Fill)
         .style(|_| iced::widget::container::Style::default().background(self.theme.background()))
@@ -94,8 +68,14 @@ impl State {
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::Noop => Task::none(),
+            Message::Page(msg) => self.page.update(msg),
+            Message::SetTheme(mode) => self.theme.mode = mode,
         }
+        Task::none()
+    }
+
+    fn subscription(&self) -> iced::Subscription<Message> {
+        iced::Subscription::none()
     }
 }
 
@@ -116,5 +96,6 @@ fn main() -> iced::Result {
     )
     .title(APP_NAME)
     .default_font(Font::with_name("Noto Sans"))
+    .subscription(State::subscription)
     .run()
 }

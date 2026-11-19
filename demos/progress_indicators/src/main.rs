@@ -1,104 +1,73 @@
-use std::time::{Duration, Instant};
-
-use iced::{
-    Element, Font, Length, Subscription, Task,
-    widget::{column, container, text},
-};
-use iced_m3::{
-    theme::{ColorScheme, Theme},
-    widget::progress_bar,
-};
+use iced::{Element, Font, Length, Subscription, Task, widget::{column, container, row, text}};
+use iced_m3::theme::{ColorScheme, Mode, Theme};
 
 const APP_NAME: &str = "Progress Indicators Demo";
 
+#[derive(Clone)]
+enum Message {
+    Page(progress_indicators::Message),
+    SetTheme(Mode),
+}
+
 struct State {
-    start: Instant,
-    progress: f32,
     theme: Theme,
+    page: progress_indicators::Page,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
-            start: Instant::now(),
-            progress: 0.0,
-            theme: Theme::default(iced_m3::theme::Mode::Dark),
+            theme: Theme::default(Mode::Dark),
+            page: progress_indicators::Page::default(),
         }
-    }
-}
-
-pub fn anim(elapsed: Duration) -> f32 {
-    const RAMP: f32 = 1.2;
-    const HOLD: f32 = 0.75;
-    const RESET: f32 = 0.05;
-    const WAIT: f32 = 0.15;
-
-    let cycle = RAMP + HOLD + RESET + WAIT;
-    let t = elapsed.as_secs_f32() % cycle;
-
-    if t < RAMP {
-        let progress = t / RAMP;
-        1.0 - (1.0 - progress).powi(2)
-    } else if t < RAMP + HOLD {
-        1.0
-    } else {
-        0.0
     }
 }
 
 impl State {
-    fn update(&mut self, message: Message) -> Task<Message> {
-        match message {
-            Message::Tick => {
-                self.progress = anim(self.start.elapsed());
-            }
-        }
-        Task::none()
-    }
+    fn view(&self) -> Element<'_, Message> {
+        let theme_buttons = row![
+            iced_m3::widget::button(
+                iced_m3::widget::button::Style::filled(&self.theme, iced_m3::theme::Accent::Primary),
+                iced_m3::widget::button::Content::Label("Light".into()),
+            )
+            .on_press(Message::SetTheme(Mode::Light)),
+            iced_m3::widget::button(
+                iced_m3::widget::button::Style::filled(&self.theme, iced_m3::theme::Accent::Secondary),
+                iced_m3::widget::button::Content::Label("Dark".into()),
+            )
+            .on_press(Message::SetTheme(Mode::Dark)),
+        ]
+        .spacing(8);
 
-    fn view<'a>(&'a self) -> Element<'a, Message> {
         container(
             column![
-                text(APP_NAME)
+                text::Text::new(APP_NAME)
                     .font(fonts::text_bold())
-                    .size(24.0)
+                    .size(28.0)
                     .color(self.theme.on_surface()),
-                text("Determinate indicators").color(self.theme.on_surface()),
-                progress_bar(progress_bar::Style::new(&self.theme)).progress(0.0),
-                progress_bar(progress_bar::Style::new(&self.theme)).progress(0.25),
-                progress_bar(progress_bar::Style::new(&self.theme)).progress(0.5),
-                progress_bar(progress_bar::Style::new(&self.theme)).progress(0.75),
-                progress_bar(progress_bar::Style::new(&self.theme)).progress(1.0),
-                text("You can change height (thick)").color(self.theme.on_surface()),
-                progress_bar(progress_bar::Style::new(&self.theme))
-                    .progress(0.5)
-                    .height(16.0),
-                text("In action!").color(self.theme.on_surface()),
-                progress_bar(progress_bar::Style::new(&self.theme)).progress(self.progress),
-                progress_bar(progress_bar::Style::new(&self.theme))
-                    .progress(self.progress)
-                    .height(16.0),
-                text("Indeterminate!").color(self.theme.on_surface()),
-                progress_bar(progress_bar::Style::new(&self.theme)),
-                progress_bar(progress_bar::Style::new(&self.theme)).height(16.0),
+                theme_buttons,
+                self.page.view(&self.theme).map(Message::Page),
             ]
-            .width(500.0)
-            .spacing(20.0),
+            .spacing(24),
         )
-        .padding(10.0)
+        .padding(24.0)
         .width(Length::Fill)
         .height(Length::Fill)
         .style(|_| iced::widget::container::Style::default().background(self.theme.background()))
         .into()
     }
 
-    fn subscription(&self) -> Subscription<Message> {
-        iced::time::every(Duration::from_millis(16)).map(|_| Message::Tick)
+    fn update(&mut self, message: Message) -> Task<Message> {
+        match message {
+            Message::Page(msg) => self.page.update(msg),
+            Message::SetTheme(mode) => self.theme.mode = mode,
+        }
+        Task::none()
     }
-}
 
-enum Message {
-    Tick,
+    fn subscription(&self) -> Subscription<Message> {
+        self.page.subscription().map(Message::Page)
+    }
 }
 
 fn main() -> iced::Result {
@@ -116,8 +85,8 @@ fn main() -> iced::Result {
         State::update,
         State::view,
     )
-    .subscription(State::subscription)
     .title(APP_NAME)
     .default_font(Font::with_name("Noto Sans"))
+    .subscription(State::subscription)
     .run()
 }

@@ -1,7 +1,5 @@
-mod scrollable;
 mod shadow;
 
-pub use scrollable::*;
 pub use shadow::*;
 
 use crate::animation::Interpolable;

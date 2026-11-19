@@ -3,8 +3,8 @@ mod item;
 use std::time::Instant;
 
 use iced::{
-    Border, Color, Element, Font, Length, Padding, Pixels, Rectangle, Size, Vector,
-    advanced::{Widget, layout::Node, mouse, renderer::Quad, text, widget::Tree},
+    Color, Element, Font, Length, Padding, Pixels, Rectangle, Size, Vector,
+    advanced::{Widget, layout::Node, mouse, text, widget::Tree},
 };
 
 use crate::{
@@ -23,7 +23,6 @@ use crate::{
 pub use item::Content as Item;
 pub use item::Style as ItemStyle;
 
-const COLLAPSED_ITEM_SPACE: f32 = 4.0;
 const MENU_ICON_SIZE: Pixels = Pixels(24.0);
 const MENU_BUTTON_PADDING: f32 = 4.0;
 
@@ -160,10 +159,12 @@ where
     expand_spring: Option<Spring>,
     hide_labels_when_collapsed: bool,
     menu_visible: bool,
+    scrollbar_color: Option<Color>,
 
     menu_button: Option<Element<'a, Message, Theme, Renderer>>,
     fab_element: Option<Element<'a, Message, Theme, Renderer>>,
     item_elements: Vec<Element<'a, Message, Theme, Renderer>>,
+    items_container: Option<Element<'a, Message, Theme, Renderer>>,
 }
 
 impl<'a, Message, Theme, Renderer> NavRail<'a, Message, Theme, Renderer>
@@ -192,9 +193,11 @@ where
             expand_spring: None,
             hide_labels_when_collapsed: false,
             menu_visible: true,
+            scrollbar_color: None,
             menu_button: None,
             fab_element: None,
             item_elements: Vec::new(),
+            items_container: None,
         }
     }
 
@@ -222,6 +225,20 @@ where
             Some(mode) => self.mode(mode),
             None => self,
         }
+    }
+
+    #[must_use]
+    pub fn scrollbar_color(mut self, color: Color) -> Self {
+        self.scrollbar_color = Some(color);
+        self
+    }
+
+    #[must_use]
+    pub fn scrollbar_color_maybe(mut self, maybe_color: Option<Color>) -> Self {
+        if let Some(color) = maybe_color {
+            self.scrollbar_color = Some(color);
+        }
+        self
     }
 
     #[must_use]
@@ -357,32 +374,20 @@ where
     }
 }
 
-struct ScrollbarDrag {
-    start_scroll_offset: f32,
-    start_cursor_y: f32,
-}
-
 struct State {
     width: SpringValue<f32>,
     /// Normalized expansion progress: 0 = collapsed, 1 = expanded
     expansion: SpringValue<f32>,
     menu_visible: SpringValue<f32>,
-    scroll_offset: f32,
-    max_scroll_offset: f32,
-    scrollbar_drag: Option<ScrollbarDrag>,
-    scrollbar_thumb_bounds: Option<Rectangle>,
-    scrollbar_hovered: bool,
-}
-
-fn lerp(a: f32, b: f32, t: f32) -> f32 {
-    a + (b - a) * t
 }
 
 impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer>
     for NavRail<'a, Message, Theme, Renderer>
 where
     Message: Clone,
-    Renderer: iced::advanced::text::Renderer
+    Theme: 'a,
+    Renderer: 'a
+        + iced::advanced::text::Renderer
         + iced::advanced::svg::Renderer
         + iced_widget::renderer::geometry::Renderer,
     Renderer::Font: From<iced::Font>,
@@ -404,11 +409,6 @@ where
             width: SpringValue::new(width, spring, now),
             expansion: SpringValue::new(expansion, spring, now),
             menu_visible: SpringValue::new(menu_visible_initial, spring, now),
-            scroll_offset: 0.0,
-            max_scroll_offset: 0.0,
-            scrollbar_drag: None,
-            scrollbar_thumb_bounds: None,
-            scrollbar_hovered: false,
         };
         state.width.reset(width, now);
         state.expansion.reset(expansion, now);
@@ -444,7 +444,7 @@ where
             state.width.set_target(self.mode.width().0, now);
         }
 
-        let target_len = 2 + self.item_elements.len();
+        let target_len = 3;
         if tree.children.len() != target_len {
             tree.children = self.children();
         } else {
@@ -454,6 +454,11 @@ where
                     .height(Length::Shrink),
             );
             let fab_placeholder: Element<'a, Message, Theme, Renderer> = Element::new(
+                iced::widget::Space::new()
+                    .width(Length::Shrink)
+                    .height(Length::Shrink),
+            );
+            let items_placeholder: Element<'a, Message, Theme, Renderer> = Element::new(
                 iced::widget::Space::new()
                     .width(Length::Shrink)
                     .height(Length::Shrink),
@@ -469,14 +474,16 @@ where
             } else {
                 tree.children[1].diff(fab_placeholder.as_widget());
             }
-            for (i, item) in self.item_elements.iter().enumerate() {
-                tree.children[2 + i].diff(item.as_widget());
+            if let Some(container) = self.items_container.as_ref() {
+                tree.children[2].diff(container.as_widget());
+            } else {
+                tree.children[2].diff(items_placeholder.as_widget());
             }
         }
     }
 
     fn children(&self) -> Vec<Tree> {
-        let mut children = Vec::with_capacity(2 + self.item_elements.len());
+        let mut children = Vec::with_capacity(3);
 
         if let Some(menu) = self.menu_button.as_ref() {
             children.push(Tree::new(menu.as_widget()));
@@ -500,11 +507,16 @@ where
             children.push(Tree::new(fab_placeholder.as_widget()));
         }
 
-        children.extend(
-            self.item_elements
-                .iter()
-                .map(|item| Tree::new(item.as_widget())),
-        );
+        if let Some(container) = self.items_container.as_ref() {
+            children.push(Tree::new(container.as_widget()));
+        } else {
+            let placeholder: Element<'a, Message, Theme, Renderer> = Element::new(
+                iced::widget::Space::new()
+                    .width(Length::Shrink)
+                    .height(Length::Shrink),
+            );
+            children.push(Tree::new(placeholder.as_widget()));
+        }
 
         children
     }
@@ -530,13 +542,26 @@ where
                 let temp_limits =
                     iced::advanced::layout::Limits::new(Size::ZERO, Size::new(f32::MAX, f32::MAX));
                 let mut max_item_width = 0.0f32;
-                for (idx, item_element) in self.item_elements.iter_mut().enumerate() {
-                    let child_tree = &mut tree.children[2 + idx];
-                    child_tree.state.downcast_mut::<ItemState>().expansion = expansion;
+                for (index, content) in self.items.iter().enumerate() {
+                    let active = index == self.active_index;
+                    let mut item_element: Element<'a, Message, Theme, Renderer> = item::Item::new(
+                        self.style.item_style,
+                        content.clone(),
+                        self.mode.is_expanded(),
+                        self.label_font,
+                        active,
+                        self.hide_labels_when_collapsed,
+                    )
+                    .motion_scheme_maybe(self.motion_scheme)
+                    .active_transition_spring_maybe(self.item_active_transition_spring)
+                    .color_spring_maybe(self.item_color_spring)
+                    .into();
+                    let mut temp_tree = Tree::new(item_element.as_widget());
+                    temp_tree.state.downcast_mut::<ItemState>().expansion = expansion;
                     let item_layout =
                         item_element
                             .as_widget_mut()
-                            .layout(child_tree, renderer, &temp_limits);
+                            .layout(&mut temp_tree, renderer, &temp_limits);
                     max_item_width = max_item_width.max(item_layout.bounds().width);
                 }
                 max_item_width.max(collapsed_width)
@@ -551,8 +576,7 @@ where
             .unwrap_or(constants::CONTAINER_VERTICAL_PADDING);
         let mut offset = container_vertical_padding;
 
-        let capacity = 2 + self.item_elements.len();
-        let mut children = Vec::with_capacity(capacity);
+        let mut children = Vec::with_capacity(3);
         let mut tree_index = 0;
 
         // Menu
@@ -612,70 +636,34 @@ where
             offset = offset.round();
         }
 
-        let item_space = (COLLAPSED_ITEM_SPACE * (1.0 - expansion)).max(0.0).round();
-        let item_small_height = if self.hide_labels_when_collapsed {
-            item::ITEM_SMALL_NO_LABEL_HEIGHT
-        } else {
-            item::ITEM_SMALL_TOTAL_HEIGHT
-        };
-        let item_height = lerp(item_small_height, item::INDICATOR_LARGE_HEIGHT, expansion).round();
-        let item_count = self.item_elements.len();
-        let total_height =
-            item_count as f32 * item_height + item_count.saturating_sub(1) as f32 * item_space;
-
         let item_start_offset = offset;
         let available_height =
-            container_bounds.height - item_start_offset - container_vertical_padding;
-        let max_offset = (total_height - available_height).max(0.0);
-        rail_state.max_scroll_offset = max_offset;
-        rail_state.scroll_offset = rail_state.scroll_offset.min(max_offset);
+            (container_bounds.height - item_start_offset - container_vertical_padding).max(0.0);
 
-        // Compute scrollbar thumb bounds (relative to container)
-        if max_offset > 0.001 && available_height > 0.0 {
-            let thumb_height = (available_height
-                * (available_height / total_height.max(available_height)))
-            .max(8.0);
-            let scroll_progress = if max_offset > 0.0 {
-                rail_state.scroll_offset / max_offset
-            } else {
-                0.0
-            };
-            let thumb_y = item_start_offset + scroll_progress * (available_height - thumb_height);
-            rail_state.scrollbar_thumb_bounds = Some(Rectangle {
-                x: container_bounds.width - 5.0,
-                y: thumb_y,
-                width: 4.0,
-                height: thumb_height,
-            });
-        } else {
-            rail_state.scrollbar_thumb_bounds = None;
+        // Set expansion on real items inside the scrollable container
+        if let Some(container) = self.items_container.as_mut() {
+            let scrollable_tree = &mut tree.children[tree_index];
+            if !scrollable_tree.children.is_empty() {
+                let inner_scrollable_tree = &mut scrollable_tree.children[0];
+                if !inner_scrollable_tree.children.is_empty() {
+                    let column_tree = &mut inner_scrollable_tree.children[0];
+                    for item_tree in column_tree.children.iter_mut() {
+                        item_tree.state.downcast_mut::<ItemState>().expansion = expansion;
+                    }
+                }
+            }
+
+            let item_limits =
+                iced::advanced::layout::Limits::new(Size::ZERO, Size::new(width, available_height));
+            let scrollable_layout = container
+                .as_widget_mut()
+                .layout(scrollable_tree, renderer, &item_limits)
+                .translate(Vector::new(0.0, item_start_offset));
+            children.push(scrollable_layout);
         }
 
         let now = Instant::now();
         rail_state.width.set_target(effective_target, now);
-
-        let scroll_offset = rail_state.scroll_offset;
-
-        let item_limits =
-            iced::advanced::layout::Limits::new(Size::ZERO, Size::new(width, f32::MAX));
-
-        for item_element in &mut self.item_elements {
-            let index = tree_index;
-            tree_index += 1;
-
-            let child_tree = &mut tree.children[index];
-            child_tree.state.downcast_mut::<ItemState>().expansion = expansion;
-
-            let layout = item_element
-                .as_widget_mut()
-                .layout(child_tree, renderer, &item_limits)
-                .translate(Vector::new(0.0, offset - scroll_offset));
-
-            offset += layout.bounds().height + item_space;
-            offset = offset.round();
-
-            children.push(layout);
-        }
 
         Node::with_children(container_bounds, children)
     }
@@ -749,7 +737,7 @@ where
             (layout.bounds().y + layout.bounds().height - container_vertical_padding - start_y)
                 .max(0.0);
 
-        if !self.item_elements.is_empty() {
+        if self.items_container.is_some() {
             let items_clip = Rectangle {
                 x: layout.bounds().x,
                 y: start_y,
@@ -757,47 +745,18 @@ where
                 height: clip_height,
             };
 
+            let scrollable_layout = layouts.next().unwrap();
             renderer.with_layer(items_clip, |renderer| {
-                let mut local_tree_index = tree_index;
-                for item in &self.item_elements {
-                    let child_layout = layouts.next().unwrap();
-                    item.as_widget().draw(
-                        &tree.children[local_tree_index],
-                        renderer,
-                        theme,
-                        style,
-                        child_layout,
-                        cursor,
-                        viewport,
-                    );
-                    local_tree_index += 1;
-                }
+                self.items_container.as_ref().unwrap().as_widget().draw(
+                    &tree.children[tree_index],
+                    renderer,
+                    theme,
+                    style,
+                    scrollable_layout,
+                    cursor,
+                    viewport,
+                );
             });
-        }
-
-        // Draw scrollbar
-        if let Some(ref thumb_bounds) = rail_state.scrollbar_thumb_bounds {
-            let is_dragging = rail_state.scrollbar_drag.is_some();
-            let thumb_color = if is_dragging {
-                self.style.item_style.content_inactive
-            } else if rail_state.scrollbar_hovered {
-                self.style.item_style.content_inactive.scale_alpha(0.8)
-            } else {
-                self.style.item_style.content_inactive.scale_alpha(0.5)
-            };
-            let absolute_bounds = Rectangle {
-                x: layout.bounds().x + thumb_bounds.x,
-                y: layout.bounds().y + thumb_bounds.y,
-                ..*thumb_bounds
-            };
-            renderer.fill_quad(
-                Quad {
-                    bounds: absolute_bounds,
-                    border: Border::default().rounded(2.0),
-                    ..Default::default()
-                },
-                thumb_color,
-            );
         }
     }
 
@@ -866,35 +825,17 @@ where
         }
         tree_index += 1;
 
-        for item in &self.item_elements {
-            let interaction = item.as_widget().mouse_interaction(
+        if let Some(container) = self.items_container.as_ref() {
+            let scrollable_layout = layouts.next().unwrap();
+            let interaction = container.as_widget().mouse_interaction(
                 &tree.children[tree_index],
-                layouts.next().unwrap(),
+                scrollable_layout,
                 cursor,
                 viewport,
                 renderer,
             );
-            tree_index += 1;
             if interaction != mouse::Interaction::None {
                 return interaction;
-            }
-        }
-
-        // Check scrollbar thumb
-        let rail_state = tree.state.downcast_ref::<State>();
-        if let Some(thumb_bounds) = rail_state.scrollbar_thumb_bounds {
-            if rail_state.scrollbar_drag.is_some() {
-                return mouse::Interaction::Grabbing;
-            }
-            let absolute_thumb_bounds = Rectangle {
-                x: layout.bounds().x + thumb_bounds.x,
-                y: layout.bounds().y + thumb_bounds.y,
-                ..thumb_bounds
-            };
-            if let Some(cursor_position) = cursor.position() {
-                if absolute_thumb_bounds.contains(cursor_position) {
-                    return mouse::Interaction::Grab;
-                }
             }
         }
 
@@ -914,9 +855,6 @@ where
     ) {
         let mut layouts = layout.children();
         let mut tree_index = 0;
-        let container_vertical_padding = self
-            .container_vertical_padding
-            .unwrap_or(constants::CONTAINER_VERTICAL_PADDING);
 
         // Menu
         let menu_layout = layouts.next().unwrap();
@@ -974,167 +912,19 @@ where
 
         let state = tree.state.downcast_mut::<State>();
 
-        // Compute the visible items area (below menu/fab, above bottom padding)
-        let fab_space = if self.fab_element.is_some() {
-            ITEMS_SECTION_SPACE
-        } else {
-            0.0
-        };
-        let start_y = fab_layout.bounds().y + fab_layout.bounds().height + fab_space;
-        let clip_height =
-            (layout.bounds().y + layout.bounds().height - container_vertical_padding - start_y)
-                .max(0.0);
-        let items_area = iced::Rectangle {
-            x: layout.bounds().x,
-            y: start_y,
-            width: layout.bounds().width,
-            height: clip_height,
-        };
-
-        // Only forward events to items that overlap the visible items area.
-        // This prevents items that slide up under the animating menu from
-        // receiving clicks meant for the menu button.
-        for item in &mut self.item_elements {
-            let child_layout = layouts.next().unwrap();
-            let child_bounds = child_layout.bounds();
-
-            let overlaps = child_bounds.y < items_area.y + items_area.height
-                && child_bounds.y + child_bounds.height > items_area.y;
-            if overlaps {
-                item.as_widget_mut().update(
-                    &mut tree.children[tree_index],
-                    event,
-                    child_layout,
-                    cursor,
-                    renderer,
-                    clipboard,
-                    shell,
-                    viewport,
-                );
-            }
-
-            tree_index += 1;
-        }
-
-        if cursor.is_over(items_area) {
-            match event {
-                iced::Event::Mouse(iced::mouse::Event::WheelScrolled { delta }) => {
-                    let delta_y = match delta {
-                        iced::mouse::ScrollDelta::Lines { y, .. } => y * 40.0,
-                        iced::mouse::ScrollDelta::Pixels { y, .. } => *y,
-                    };
-                    let expansion = state.expansion.value().clamp(0.0, 1.0);
-                    let item_small_height = if self.hide_labels_when_collapsed {
-                        item::ITEM_SMALL_NO_LABEL_HEIGHT
-                    } else {
-                        item::ITEM_SMALL_TOTAL_HEIGHT
-                    };
-                    let item_height =
-                        lerp(item_small_height, item::INDICATOR_LARGE_HEIGHT, expansion);
-                    let item_space = (COLLAPSED_ITEM_SPACE * (1.0 - expansion)).max(0.0);
-                    let total_item_height = self.item_elements.len() as f32 * item_height
-                        + self.item_elements.len().saturating_sub(1) as f32 * item_space;
-                    let max_offset = (total_item_height - clip_height).max(0.0);
-                    state.scroll_offset = (state.scroll_offset - delta_y).clamp(0.0, max_offset);
-                    shell.request_redraw();
-                    shell.invalidate_layout();
-                }
-                _ => {}
-            }
-        }
-
-        let is_dragging = state.scrollbar_drag.is_some();
-
-        // Handle scrollbar drag
-        if let Some(drag) = &mut state.scrollbar_drag {
-            match event {
-                iced::Event::Mouse(iced::mouse::Event::CursorMoved { .. }) => {
-                    if let Some(cursor_position) = cursor.position() {
-                        let delta_y = cursor_position.y - drag.start_cursor_y;
-
-                        let item_small_height = if self.hide_labels_when_collapsed {
-                            item::ITEM_SMALL_NO_LABEL_HEIGHT
-                        } else {
-                            item::ITEM_SMALL_TOTAL_HEIGHT
-                        };
-                        let expansion = state.expansion.value().clamp(0.0, 1.0);
-                        let item_height =
-                            lerp(item_small_height, item::INDICATOR_LARGE_HEIGHT, expansion);
-                        let item_space = (COLLAPSED_ITEM_SPACE * (1.0 - expansion)).max(0.0);
-                        let total_height = self.item_elements.len() as f32 * item_height
-                            + self.item_elements.len().saturating_sub(1) as f32 * item_space;
-
-                        let clip_height = (layout.bounds().y + layout.bounds().height
-                            - container_vertical_padding
-                            - start_y)
-                            .max(0.0);
-
-                        if clip_height > 0.0 && total_height > clip_height {
-                            let scroll_ratio = total_height / clip_height;
-                            state.scroll_offset = (drag.start_scroll_offset
-                                + delta_y * scroll_ratio)
-                                .clamp(0.0, state.max_scroll_offset);
-                            shell.request_redraw();
-                            shell.invalidate_layout();
-                        }
-                    }
-                }
-                iced::Event::Mouse(iced::mouse::Event::ButtonReleased(
-                    iced::mouse::Button::Left,
-                )) => {
-                    state.scrollbar_drag = None;
-                    shell.request_redraw();
-                }
-                _ => {}
-            }
-        }
-
-        // Check for scrollbar drag start
-        if !is_dragging {
-            if let iced::Event::Mouse(iced::mouse::Event::ButtonPressed(
-                iced::mouse::Button::Left,
-            )) = event
-            {
-                if let Some(cursor_position) = cursor.position() {
-                    if let Some(thumb_bounds) = &state.scrollbar_thumb_bounds {
-                        let absolute_thumb_bounds = Rectangle {
-                            x: layout.bounds().x + thumb_bounds.x,
-                            y: layout.bounds().y + thumb_bounds.y,
-                            ..*thumb_bounds
-                        };
-                        if absolute_thumb_bounds.contains(cursor_position) {
-                            state.scrollbar_drag = Some(ScrollbarDrag {
-                                start_scroll_offset: state.scroll_offset,
-                                start_cursor_y: cursor_position.y,
-                            });
-                            shell.capture_event();
-                        }
-                    }
-                }
-            }
-        }
-
-        // Track scrollbar hover
-        if !is_dragging {
-            if let iced::Event::Mouse(iced::mouse::Event::CursorMoved { .. }) = event {
-                if let Some(cursor_position) = cursor.position() {
-                    let was_hovered = state.scrollbar_hovered;
-                    state.scrollbar_hovered =
-                        if let Some(thumb_bounds) = &state.scrollbar_thumb_bounds {
-                            let absolute_thumb_bounds = Rectangle {
-                                x: layout.bounds().x + thumb_bounds.x,
-                                y: layout.bounds().y + thumb_bounds.y,
-                                ..*thumb_bounds
-                            };
-                            absolute_thumb_bounds.contains(cursor_position)
-                        } else {
-                            false
-                        };
-                    if state.scrollbar_hovered != was_hovered {
-                        shell.request_redraw();
-                    }
-                }
-            }
+        // Delegate events to scrollable items container
+        if let Some(container) = self.items_container.as_mut() {
+            let scrollable_layout = layouts.next().unwrap();
+            container.as_widget_mut().update(
+                &mut tree.children[tree_index],
+                event,
+                scrollable_layout,
+                cursor,
+                renderer,
+                clipboard,
+                shell,
+                viewport,
+            );
         }
 
         let now = match event {
@@ -1168,7 +958,9 @@ impl<'a, Message, Theme, Renderer> From<NavRail<'a, Message, Theme, Renderer>>
     for Element<'a, Message, Theme, Renderer>
 where
     Message: Clone,
-    Theme: 'a,
+    Theme: 'a + iced_widget::scrollable::Catalog,
+    <Theme as iced_widget::scrollable::Catalog>::Class<'a>:
+        From<iced_widget::scrollable::StyleFn<'a, Theme>>,
     Renderer: 'a
         + iced::advanced::text::Renderer
         + iced::advanced::svg::Renderer
@@ -1223,15 +1015,15 @@ where
         });
 
         let items = std::mem::take(&mut value.items);
+        let expanded = value.mode.is_expanded();
         value.item_elements = items
-            .into_iter()
+            .iter()
             .enumerate()
             .map(|(index, content)| {
                 let active = index == value.active_index;
-                let expanded = value.mode.is_expanded();
                 item::Item::new(
                     value.style.item_style,
-                    content,
+                    content.clone(),
                     expanded,
                     value.label_font,
                     active,
@@ -1243,6 +1035,21 @@ where
                 .into()
             })
             .collect();
+
+        // Build scrollable container from items
+        let scrollbar_color = value
+            .scrollbar_color
+            .unwrap_or(value.style.item_style.content_inactive);
+        let taken_items = std::mem::take(&mut value.item_elements);
+        let mut col = iced::widget::Column::new().spacing(0.0).padding(0.0);
+        for item in taken_items {
+            col = col.push(item);
+        }
+        let scroller = crate::widget::scrollable::scrollable_with_color(scrollbar_color, col);
+        value.items_container = Some(scroller.into());
+
+        // Restore raw items for potential future layout measurements
+        value.items = items;
 
         Element::new(value)
     }

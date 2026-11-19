@@ -64,7 +64,7 @@ use super::{
     SliderOverlay, Style, ValueIndicator, ValueLabel, center_at, cursor_main, decrement,
     draw_stop_indicator, effective_step, factor_at, fill_track_segment, focus_ring_size,
     handle_circle, handle_rect, huge_bounds, increment, keyboard_step, label_anchor, label_text,
-    main_len, range_f64, rect_at, value_at, value_factor,
+    main_len, range_f64, rect_at, step_decimal_places, value_at, value_factor,
 };
 use crate::{
     animation::motion::{self, Spring, SpringValue, fast_effects, fast_spatial},
@@ -517,8 +517,11 @@ where
     where
         T: Into<f64>,
     {
+        let step_f64: f64 = self.step.into();
+        let min_decimal_places = step_decimal_places(step_f64);
+        let decimal_places = self.decimal_places.max(min_decimal_places);
         self.value_indicator
-            .format(self.value_of(thumb), self.decimal_places)
+            .format(self.value_of(thumb), decimal_places, min_decimal_places)
     }
 }
 

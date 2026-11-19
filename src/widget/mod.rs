@@ -191,6 +191,7 @@ where
 
 #[must_use]
 pub fn navrail<'a, Message, Theme, Renderer>(
+    theme: &impl ColorScheme,
     style: navrail::Style,
     items: Vec<navrail::Item<'a, Message>>,
 ) -> NavRail<'a, Message, Theme, Renderer>
@@ -201,7 +202,7 @@ where
         + iced_widget::renderer::geometry::Renderer,
     Renderer::Font: From<iced::Font>,
 {
-    NavRail::new(style, items)
+    NavRail::new(style, items).scrollbar_color(theme.on_surface_variant())
 }
 
 #[must_use]

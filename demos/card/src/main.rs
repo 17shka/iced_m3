@@ -1,127 +1,65 @@
 use iced::{
-    Color, Element, Font, Length, Task,
-    widget::{center, column, container, row, text},
+    Element, Font, Length, Task,
+    widget::{column, container, row, text},
 };
-use iced_m3::{
-    style::StateLayer,
-    theme::{Accent, ColorScheme, Mode, Theme},
-    widget::{
-        Action,
-        button::{self, Content},
-        card::{Interaction, MAX_CARD_BETWEEN_PADDING, Style},
-    },
-};
+use iced_m3::theme::{ColorScheme, Mode, Theme};
 
 const APP_NAME: &str = "Card Demo";
 
 #[derive(Clone)]
 enum Message {
-    Noop,
-    SetDisabled,
-    SetNonInteractive,
-    SetPressable,
+    Page(card::Message),
+    SetTheme(Mode),
 }
 
-struct State<'a> {
+struct State {
     theme: Theme,
-    interaction: Interaction<'a, Message>,
+    page: card::Page,
 }
 
-impl<'a> Default for State<'a> {
+impl Default for State {
     fn default() -> Self {
         Self {
             theme: Theme::default(Mode::Dark),
-            interaction: Interaction::default(),
+            page: card::Page::default(),
         }
     }
 }
 
-impl<'a> State<'a> {
+impl State {
     fn view(&self) -> Element<'_, Message> {
-        let card_width = 250.0;
-        let card_height = 150.0;
-
-        let card =
-            move |style: Style, label: &'a str, label_color: Color| -> Element<'a, Message> {
-                let interaction = match &self.interaction {
-                    Interaction::NonInteractive => Interaction::NonInteractive,
-                    Interaction::Press(on_press) => {
-                        Interaction::Press(Action::Direct(on_press.resolve()))
-                    }
-                    Interaction::Disabled => Interaction::Disabled,
-                };
-                iced_m3::widget::card(style, center(text(label).size(24.0).color(label_color)))
-                    .interaction(interaction)
-                    .width(card_width)
-                    .height(card_height)
-                    .into()
-            };
-
-        let buttons = row![
+        let theme_buttons = row![
             iced_m3::widget::button(
-                button::Style::elevated(&self.theme, Accent::default()),
-                Content::Label("Non-interactive".into())
-            )
-            .on_press(Message::SetNonInteractive),
-            iced_m3::widget::button(
-                button::Style::elevated(&self.theme, Accent::default()),
-                Content::Label("Disabled".into())
-            )
-            .on_press(Message::SetDisabled),
-            iced_m3::widget::button(
-                button::Style::elevated(&self.theme, Accent::default()),
-                Content::Label("Clickable".into())
-            )
-            .on_press(Message::SetPressable),
-        ]
-        .spacing(4.0);
-
-        let cards = column![
-            row![
-                card(
-                    Style::elevated(&self.theme),
-                    "Elevated",
-                    self.theme.on_surface()
+                iced_m3::widget::button::Style::filled(
+                    &self.theme,
+                    iced_m3::theme::Accent::Primary
                 ),
-                card(
-                    Style::filled(&self.theme),
-                    "Filled",
-                    self.theme.on_surface()
-                )
-            ]
-            .spacing(MAX_CARD_BETWEEN_PADDING),
-            row![
-                card(
-                    Style::outlined(&self.theme),
-                    "Outlined",
-                    self.theme.on_surface()
+                iced_m3::widget::button::Content::Label("Light".into()),
+            )
+            .on_press(Message::SetTheme(Mode::Light)),
+            iced_m3::widget::button(
+                iced_m3::widget::button::Style::filled(
+                    &self.theme,
+                    iced_m3::theme::Accent::Secondary
                 ),
-                card(
-                    Style {
-                        container_color: self.theme.tertiary_container(),
-                        state_layer: StateLayer::new(self.theme.on_tertiary_container()),
-                        ..Style::filled(&self.theme)
-                    },
-                    "Custom",
-                    self.theme.on_tertiary_container()
-                )
-            ]
-            .spacing(MAX_CARD_BETWEEN_PADDING)
+                iced_m3::widget::button::Content::Label("Dark".into()),
+            )
+            .on_press(Message::SetTheme(Mode::Dark)),
         ]
-        .spacing(MAX_CARD_BETWEEN_PADDING);
+        .spacing(8);
 
         container(
             column![
-                text(APP_NAME)
+                text::Text::new(APP_NAME)
                     .font(fonts::text_bold())
-                    .size(24.0)
+                    .size(28.0)
                     .color(self.theme.on_surface()),
-                buttons,
-                cards,
+                theme_buttons,
+                self.page.view(&self.theme).map(Message::Page),
             ]
-            .spacing(20.0),
+            .spacing(24),
         )
-        .padding(10.0)
+        .padding(24.0)
         .width(Length::Fill)
         .height(Length::Fill)
         .style(|_| iced::widget::container::Style::default().background(self.theme.background()))
@@ -130,14 +68,14 @@ impl<'a> State<'a> {
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::Noop => {}
-            Message::SetDisabled => self.interaction = Interaction::Disabled,
-            Message::SetNonInteractive => self.interaction = Interaction::NonInteractive,
-            Message::SetPressable => {
-                self.interaction = Interaction::Press(Action::Direct(Message::Noop))
-            }
+            Message::Page(msg) => self.page.update(msg),
+            Message::SetTheme(mode) => self.theme.mode = mode,
         }
         Task::none()
+    }
+
+    fn subscription(&self) -> iced::Subscription<Message> {
+        iced::Subscription::none()
     }
 }
 
@@ -158,5 +96,6 @@ fn main() -> iced::Result {
     )
     .title(APP_NAME)
     .default_font(Font::with_name("Noto Sans"))
+    .subscription(State::subscription)
     .run()
 }

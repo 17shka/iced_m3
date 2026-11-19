@@ -1,31 +1,24 @@
-use iced::{
-    Element, Font, Length, Task,
-    widget::{column, container, row, text},
-};
-use iced_m3::{
-    theme::{ColorScheme, Mode, Theme},
-    widget,
-    widget::{button, button::Content},
-};
+use iced::{Element, Font, Length, Task, widget::{column, container, row, text}};
+use iced_m3::theme::{ColorScheme, Mode, Theme};
 
 const APP_NAME: &str = "Switch Demo";
 
 #[derive(Clone)]
 enum Message {
-    Demo(switch::Message),
+    Page(switch::Message),
     SetTheme(Mode),
 }
 
 struct State {
     theme: Theme,
-    demo: switch::Demo,
+    page: switch::Page,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
             theme: Theme::default(Mode::Dark),
-            demo: switch::Demo::default(),
+            page: switch::Page::default(),
         }
     }
 }
@@ -33,14 +26,14 @@ impl Default for State {
 impl State {
     fn view(&self) -> Element<'_, Message> {
         let theme_buttons = row![
-            widget::button(
-                button::Style::filled(&self.theme, iced_m3::theme::Accent::Primary),
-                Content::Label("Light".into()),
+            iced_m3::widget::button(
+                iced_m3::widget::button::Style::filled(&self.theme, iced_m3::theme::Accent::Primary),
+                iced_m3::widget::button::Content::Label("Light".into()),
             )
             .on_press(Message::SetTheme(Mode::Light)),
-            widget::button(
-                button::Style::filled(&self.theme, iced_m3::theme::Accent::Secondary),
-                Content::Label("Dark".into()),
+            iced_m3::widget::button(
+                iced_m3::widget::button::Style::filled(&self.theme, iced_m3::theme::Accent::Secondary),
+                iced_m3::widget::button::Content::Label("Dark".into()),
             )
             .on_press(Message::SetTheme(Mode::Dark)),
         ]
@@ -53,7 +46,7 @@ impl State {
                     .size(28.0)
                     .color(self.theme.on_surface()),
                 theme_buttons,
-                self.demo.view(&self.theme).map(Message::Demo),
+                self.page.view(&self.theme).map(Message::Page),
             ]
             .spacing(24),
         )
@@ -66,10 +59,14 @@ impl State {
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::Demo(msg) => self.demo.update(msg),
+            Message::Page(msg) => self.page.update(msg),
             Message::SetTheme(mode) => self.theme.mode = mode,
         }
         Task::none()
+    }
+
+    fn subscription(&self) -> iced::Subscription<Message> {
+        iced::Subscription::none()
     }
 }
 
@@ -90,5 +87,6 @@ fn main() -> iced::Result {
     )
     .title(APP_NAME)
     .default_font(Font::with_name("Noto Sans"))
+    .subscription(State::subscription)
     .run()
 }

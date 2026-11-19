@@ -1,172 +1,65 @@
-use std::sync::LazyLock;
-
 use iced::{
     Element, Font, Length, Task,
-    widget::{column, container, row, text::IntoFragment},
+    widget::{column, container, row, text},
 };
-use iced_m3::{
-    theme::{Accent, ColorScheme, Mode, Theme},
-    widget::{
-        button::{self, Content, Style},
-        button_group::{
-            self, connected,
-            standard::{self, GroupItem},
-        },
-        connected_button_group,
-        hybrid_icon::Icon,
-        standard_button_group,
-    },
-};
+use iced_m3::theme::{ColorScheme, Mode, Theme};
 
 const APP_NAME: &str = "Button Groups Demo";
-static STARS: LazyLock<char> = LazyLock::new(|| char::from_u32(0xe8d0).unwrap());
 
 #[derive(Clone)]
 enum Message {
-    Noop,
-    SelectIndex(usize),
-    ToggleButon(usize),
+    Page(button_groups::Message),
+    SetTheme(Mode),
 }
 
 struct State {
     theme: Theme,
-    selected_index: usize,
-    buttons: [bool; 3],
+    page: button_groups::Page,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
             theme: Theme::default(Mode::Dark),
-            selected_index: 0,
-            buttons: [false, false, false],
+            page: button_groups::Page::default(),
         }
     }
 }
 
 impl State {
     fn view(&self) -> Element<'_, Message> {
-        let sizes = [
-            connected::Size::extra_small(),
-            connected::Size::small(),
-            connected::Size::medium(),
-            connected::Size::large(),
-            connected::Size::extra_large(),
-        ];
-
-        let single_select = sizes.into_iter().map(|size| {
-            connected_button_group(
-                button::Style::filled(&self.theme, Accent::Primary),
-                (0..3)
-                    .into_iter()
-                    .map(|i| button_group::connected::Button {
-                        content: Content::Full {
-                            icon: Icon::Text {
-                                text: STARS.into_fragment(),
-                                font: Some(match self.selected_index == i {
-                                    true => fonts::icons_filled(),
-                                    false => fonts::icons_outlined(),
-                                }),
-                            },
-                            label: "Label".into(),
-                        },
-                        on_press: Some(Message::SelectIndex(i)),
-                        selected: self.selected_index == i,
-                    })
-                    .collect(),
+        let theme_buttons = row![
+            iced_m3::widget::button(
+                iced_m3::widget::button::Style::filled(
+                    &self.theme,
+                    iced_m3::theme::Accent::Primary
+                ),
+                iced_m3::widget::button::Content::Label("Light".into()),
             )
-            .size(size)
-            .into()
-        });
-
-        let multi_select = sizes.into_iter().map(|size| {
-            connected_button_group(
-                button::Style::filled(&self.theme, Accent::Primary),
-                self.buttons
-                    .into_iter()
-                    .enumerate()
-                    .map(|(index, selected)| button_group::connected::Button {
-                        content: Content::Full {
-                            icon: Icon::Text {
-                                text: STARS.into_fragment(),
-                                font: Some(match selected {
-                                    true => fonts::icons_filled(),
-                                    false => fonts::icons_outlined(),
-                                }),
-                            },
-                            label: "Label".into(),
-                        },
-                        on_press: Some(Message::ToggleButon(index)),
-                        selected,
-                    })
-                    .collect(),
+            .on_press(Message::SetTheme(Mode::Light)),
+            iced_m3::widget::button(
+                iced_m3::widget::button::Style::filled(
+                    &self.theme,
+                    iced_m3::theme::Accent::Secondary
+                ),
+                iced_m3::widget::button::Content::Label("Dark".into()),
             )
-            .size(size)
-            .into()
-        });
-
-        let connected_button_groups = row![
-            column![
-                iced::widget::text("Single select"),
-                column(single_select).spacing(10)
-            ]
-            .spacing(10),
-            column![
-                iced::widget::text("Multi select"),
-                column(multi_select).spacing(10)
-            ]
-            .spacing(10)
+            .on_press(Message::SetTheme(Mode::Dark)),
         ]
-        .spacing(20);
-
-        let sizes = [
-            (button::Size::extra_small(), standard::SPACING_EXTRA_SMALL),
-            (button::Size::small(), standard::SPACING_SMALL),
-            (button::Size::medium(), standard::SPACING_MEDIUM),
-            (button::Size::large(), standard::SPACING_LARGE),
-            (button::Size::extra_large(), standard::SPACING_EXTRA_LARGE),
-        ];
-
-        let button_content = Content::Full {
-            icon: Icon::Text {
-                text: STARS.into_fragment(),
-                font: Some(fonts::icons_filled()),
-            },
-            label: "Label".into(),
-        };
-
-        let standard_button_groups = column![
-            iced::widget::text("Standard"),
-            column(sizes.into_iter().map(|(button_size, spacing)| {
-                let buttons = (0..=2).into_iter().map(|_| {
-                    iced_m3::widget::button(
-                        Style::filled(&self.theme, Accent::Primary),
-                        button_content.clone(),
-                    )
-                    .size(button_size)
-                    .on_press(Message::Noop)
-                });
-                let items = buttons
-                    .into_iter()
-                    .map(|button| GroupItem::new(button, true));
-                standard_button_group(items).spacing(spacing).into()
-            }))
-            .spacing(20)
-        ]
-        .spacing(10);
+        .spacing(8);
 
         container(
             column![
-                iced::widget::text(APP_NAME)
+                text::Text::new(APP_NAME)
                     .font(fonts::text_bold())
-                    .size(24.0)
+                    .size(28.0)
                     .color(self.theme.on_surface()),
-                connected_button_groups,
-                standard_button_groups
+                theme_buttons,
+                self.page.view(&self.theme).map(Message::Page),
             ]
-            .spacing(20),
+            .spacing(24),
         )
-        .padding(10.0)
+        .padding(24.0)
         .width(Length::Fill)
         .height(Length::Fill)
         .style(|_| iced::widget::container::Style::default().background(self.theme.background()))
@@ -175,11 +68,14 @@ impl State {
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::SelectIndex(index) => self.selected_index = index,
-            Message::ToggleButon(index) => self.buttons[index] = !self.buttons[index],
-            Message::Noop => {}
+            Message::Page(msg) => self.page.update(msg),
+            Message::SetTheme(mode) => self.theme.mode = mode,
         }
         Task::none()
+    }
+
+    fn subscription(&self) -> iced::Subscription<Message> {
+        iced::Subscription::none()
     }
 }
 
@@ -200,5 +96,6 @@ fn main() -> iced::Result {
     )
     .title(APP_NAME)
     .default_font(Font::with_name("Noto Sans"))
+    .subscription(State::subscription)
     .run()
 }

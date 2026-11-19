@@ -1,53 +1,350 @@
-use iced::Element;
-use iced::widget::scrollable::{AutoScroll, Catalog, Rail, Scroller, Style};
-use iced::{Background, Border, Color, Shadow, widget::container};
+use iced::advanced::widget::{Tree, Widget, tree};
+use iced::advanced::{Clipboard, Layout, Shell, layout, mouse, renderer};
+use iced::widget::container;
+use iced::widget::scrollable::{
+    Anchor, AutoScroll, Catalog, Direction, Rail, Scrollbar, Scroller, Status, Style,
+};
+use iced::{
+    Background, Border, Color, Element, Event, Length, Point, Rectangle, Shadow, Size, Vector,
+};
 
 use crate::theme::ColorScheme;
+
+#[derive(Default)]
+struct WrapperState {
+    is_dragging: bool,
+}
+
+struct ScrollableWrapper<'a, Message, Theme, Renderer> {
+    content: Element<'a, Message, Theme, Renderer>,
+    scrollbar_width: f32,
+    scrollbar_margin: f32,
+    scroller_width: f32,
+    alignment: Anchor,
+}
+
+impl<'a, Message, Theme, Renderer> ScrollableWrapper<'a, Message, Theme, Renderer> {
+    fn is_over_rail(&self, bounds: Rectangle, cursor_position: Point) -> bool {
+        let total_width =
+            self.scrollbar_width.max(self.scroller_width) + 2.0 * self.scrollbar_margin;
+
+        let rail_x = if self.alignment == Anchor::End {
+            bounds.x + bounds.width - total_width
+        } else {
+            bounds.x
+        };
+
+        let rail_bounds = Rectangle {
+            x: rail_x,
+            y: bounds.y,
+            width: total_width,
+            height: bounds.height,
+        };
+
+        rail_bounds.contains(cursor_position)
+    }
+}
+
+impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer>
+    for ScrollableWrapper<'a, Message, Theme, Renderer>
+where
+    Renderer: iced::advanced::Renderer,
+{
+    fn tag(&self) -> tree::Tag {
+        tree::Tag::of::<WrapperState>()
+    }
+
+    fn state(&self) -> tree::State {
+        tree::State::new(WrapperState::default())
+    }
+
+    fn children(&self) -> Vec<Tree> {
+        vec![Tree::new(&self.content)]
+    }
+
+    fn diff(&self, tree: &mut Tree) {
+        tree.diff_children(std::slice::from_ref(&self.content));
+    }
+
+    fn size(&self) -> Size<Length> {
+        self.content.as_widget().size()
+    }
+
+    fn layout(
+        &mut self,
+        tree: &mut Tree,
+        renderer: &Renderer,
+        limits: &layout::Limits,
+    ) -> layout::Node {
+        self.content
+            .as_widget_mut()
+            .layout(&mut tree.children[0], renderer, limits)
+    }
+
+    fn operate(
+        &mut self,
+        tree: &mut Tree,
+        layout: Layout<'_>,
+        renderer: &Renderer,
+        operation: &mut dyn iced::advanced::widget::Operation,
+    ) {
+        self.content
+            .as_widget_mut()
+            .operate(&mut tree.children[0], layout, renderer, operation);
+    }
+
+    fn update(
+        &mut self,
+        tree: &mut Tree,
+        event: &Event,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        renderer: &Renderer,
+        clipboard: &mut dyn Clipboard,
+        shell: &mut Shell<'_, Message>,
+        viewport: &Rectangle,
+    ) {
+        self.content.as_widget_mut().update(
+            &mut tree.children[0],
+            event,
+            layout,
+            cursor,
+            renderer,
+            clipboard,
+            shell,
+            viewport,
+        );
+
+        if let Some(cursor_position) = cursor.position() {
+            let bounds = layout.bounds();
+            let is_over_rail = self.is_over_rail(bounds, cursor_position);
+            let state = tree.state.downcast_mut::<WrapperState>();
+
+            match event {
+                Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
+                    if is_over_rail {
+                        state.is_dragging = true;
+                    }
+                }
+                Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+                    state.is_dragging = false;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn mouse_interaction(
+        &self,
+        tree: &Tree,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        viewport: &Rectangle,
+        renderer: &Renderer,
+    ) -> mouse::Interaction {
+        let state = tree.state.downcast_ref::<WrapperState>();
+
+        if state.is_dragging {
+            return mouse::Interaction::Grabbing;
+        }
+
+        if let Some(cursor_position) = cursor.position() {
+            let bounds = layout.bounds();
+            if self.is_over_rail(bounds, cursor_position) {
+                return mouse::Interaction::Pointer;
+            }
+        }
+
+        self.content.as_widget().mouse_interaction(
+            &tree.children[0],
+            layout,
+            cursor,
+            viewport,
+            renderer,
+        )
+    }
+
+    fn draw(
+        &self,
+        tree: &Tree,
+        renderer: &mut Renderer,
+        theme: &Theme,
+        style: &renderer::Style,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        viewport: &Rectangle,
+    ) {
+        self.content.as_widget().draw(
+            &tree.children[0],
+            renderer,
+            theme,
+            style,
+            layout,
+            cursor,
+            viewport,
+        );
+    }
+
+    fn overlay<'b>(
+        &'b mut self,
+        tree: &'b mut Tree,
+        layout: Layout<'b>,
+        renderer: &Renderer,
+        viewport: &Rectangle,
+        translation: Vector,
+    ) -> Option<iced::advanced::overlay::Element<'b, Message, Theme, Renderer>> {
+        self.content.as_widget_mut().overlay(
+            &mut tree.children[0],
+            layout,
+            renderer,
+            viewport,
+            translation,
+        )
+    }
+}
+
+pub struct Scrollable<'a, Message, Theme, Renderer> {
+    content: Element<'a, Message, Theme, Renderer>,
+    scrollbar_color: Color,
+    width: Length,
+    height: Length,
+    spacing: f32,
+    direction: Direction,
+}
+
+impl<'a, Message, Theme, Renderer> Scrollable<'a, Message, Theme, Renderer> {
+    pub fn new(
+        scrollbar_color: Color,
+        content: impl Into<Element<'a, Message, Theme, Renderer>>,
+    ) -> Self {
+        Self {
+            content: content.into(),
+            scrollbar_color,
+            width: Length::Shrink,
+            height: Length::Shrink,
+            spacing: 0.0,
+            direction: Direction::Vertical(Scrollbar::new()),
+        }
+    }
+
+    pub fn width(mut self, width: impl Into<Length>) -> Self {
+        self.width = width.into();
+        self
+    }
+
+    pub fn height(mut self, height: impl Into<Length>) -> Self {
+        self.height = height.into();
+        self
+    }
+
+    pub fn spacing(mut self, spacing: impl Into<iced::Pixels>) -> Self {
+        self.spacing = spacing.into().0;
+        self
+    }
+
+    pub fn direction(mut self, direction: Direction) -> Self {
+        self.direction = direction;
+        self
+    }
+}
+
+impl<'a, Message, Theme, Renderer> From<Scrollable<'a, Message, Theme, Renderer>>
+    for Element<'a, Message, Theme, Renderer>
+where
+    Message: 'a,
+    Theme: 'a + Catalog,
+    <Theme as Catalog>::Class<'a>: From<iced::widget::scrollable::StyleFn<'a, Theme>>,
+    Renderer: 'a + iced::advanced::text::Renderer,
+{
+    fn from(builder: Scrollable<'a, Message, Theme, Renderer>) -> Self {
+        let scrollbar_color = builder.scrollbar_color;
+
+        let inner = iced::widget::scrollable(builder.content)
+            .width(builder.width)
+            .height(builder.height)
+            .spacing(builder.spacing)
+            .direction(builder.direction)
+            .style(move |_theme: &Theme, status| {
+                let color = match status {
+                    Status::Active { .. } => scrollbar_color.scale_alpha(0.15),
+                    Status::Hovered {
+                        is_vertical_scrollbar_hovered: false,
+                        ..
+                    } => scrollbar_color.scale_alpha(0.35),
+                    Status::Hovered {
+                        is_vertical_scrollbar_hovered: true,
+                        ..
+                    } => scrollbar_color.scale_alpha(0.8),
+                    Status::Dragged { .. } => scrollbar_color,
+                };
+
+                Style {
+                    container: container::Style::default(),
+                    vertical_rail: Rail {
+                        background: Some(Background::Color(Color::TRANSPARENT)),
+                        border: Border::default(),
+                        scroller: Scroller {
+                            background: Background::Color(color),
+                            border: Border::default().rounded(u32::MAX),
+                        },
+                    },
+                    horizontal_rail: Rail {
+                        background: Some(Background::Color(Color::TRANSPARENT)),
+                        border: Border::default(),
+                        scroller: Scroller {
+                            background: Background::Color(color),
+                            border: Border::default().rounded(u32::MAX),
+                        },
+                    },
+                    gap: None,
+                    auto_scroll: AutoScroll {
+                        background: Background::Color(Color::TRANSPARENT),
+                        border: Border::default(),
+                        shadow: Shadow::default(),
+                        icon: Color::TRANSPARENT,
+                    },
+                }
+            })
+            .into();
+
+        Element::new(ScrollableWrapper {
+            content: inner,
+            scrollbar_width: 4.0,
+            scrollbar_margin: 2.0,
+            scroller_width: 4.0,
+            alignment: Anchor::End,
+        })
+    }
+}
 
 /// Creates a new Material Design 3 styled [`Scrollable`].
 #[must_use]
 pub fn scrollable<'a, Message, Theme, Renderer>(
     theme: &impl ColorScheme,
     content: impl Into<Element<'a, Message, Theme, Renderer>>,
-) -> iced::widget::Scrollable<'a, Message, Theme, Renderer>
+) -> Scrollable<'a, Message, Theme, Renderer>
 where
     Theme: 'a + Catalog,
     <Theme as Catalog>::Class<'a>: From<iced::widget::scrollable::StyleFn<'a, Theme>>,
     Renderer: 'a + iced::advanced::text::Renderer,
 {
-    let scrollbar_color = theme.on_surface_variant();
+    scrollable_with_color(theme.on_surface_variant(), content)
+}
 
-    iced::widget::scrollable(content).style(move |_theme: &Theme, status| {
-        let color = match status {
-            iced::widget::scrollable::Status::Active { .. } => scrollbar_color.scale_alpha(0.4),
-            iced::widget::scrollable::Status::Hovered { .. } => scrollbar_color.scale_alpha(0.7),
-            iced::widget::scrollable::Status::Dragged { .. } => scrollbar_color,
-        };
-        Style {
-            container: container::Style::default(),
-            vertical_rail: Rail {
-                background: Some(Background::Color(Color::TRANSPARENT)),
-                border: Border::default(),
-                scroller: Scroller {
-                    background: Background::Color(color),
-                    border: Border::default().rounded(u32::MAX),
-                },
-            },
-            horizontal_rail: Rail {
-                background: Some(Background::Color(Color::TRANSPARENT)),
-                border: Border::default(),
-                scroller: Scroller {
-                    background: Background::Color(color),
-                    border: Border::default().rounded(u32::MAX),
-                },
-            },
-            gap: None,
-            auto_scroll: AutoScroll {
-                background: Background::Color(Color::TRANSPARENT),
-                border: Border::default(),
-                shadow: Shadow::default(),
-                icon: Color::TRANSPARENT,
-            },
-        }
-    })
+pub fn scrollable_with_color<'a, Message, Theme, Renderer>(
+    scrollbar_color: Color,
+    content: impl Into<Element<'a, Message, Theme, Renderer>>,
+) -> Scrollable<'a, Message, Theme, Renderer>
+where
+    Theme: 'a + Catalog,
+    <Theme as Catalog>::Class<'a>: From<iced::widget::scrollable::StyleFn<'a, Theme>>,
+    Renderer: 'a + iced::advanced::text::Renderer,
+{
+    Scrollable::new(scrollbar_color, content).direction(Direction::Vertical(
+        Scrollbar::new()
+            .width(4)
+            .scroller_width(4)
+            .margin(2)
+            .anchor(Anchor::End),
+    ))
 }

@@ -7,5 +7,17 @@ edition = "2024"
 iced = { version = "0.14.0", features = ["tokio"] }
 iced_m3 = { path = "../../", features = ["shapes"] }
 fonts = { path = "../fonts" }
+buttons = { path = "../buttons" }
+card = { path = "../card" }
 checkbox = { path = "../checkbox" }
+dialog = { path = "../dialog" }
+fab = { path = "../fab" }
+inputs = { path = "../inputs" }
+menu_demo = { path = "../menu" }
+badges = { path = "../badges" }
+navbar_demo = { path = "../navbar" }
+navrail = { path = "../navrail" }
+button_groups = { path = "../button_groups" }
+progress_indicators = { path = "../progress_indicators" }
+demo_sliders = { path = "../sliders" }
 switch = { path = "../switch" }

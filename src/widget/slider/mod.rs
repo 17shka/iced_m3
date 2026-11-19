@@ -154,26 +154,64 @@ pub enum ValueIndicator<'a, T> {
 }
 
 impl<'a, T> ValueIndicator<'a, T> {
-    fn format(&self, value: T, decimal_places: usize) -> Option<String>
+    fn format(&self, value: T, decimal_places: usize, min_decimal_places: usize) -> Option<String>
     where
         T: Display + Into<f64>,
     {
         match self {
             ValueIndicator::None => None,
-            ValueIndicator::Value => Some(format_decimal(value.into(), decimal_places)),
+            ValueIndicator::Value => Some(format_decimal(
+                value.into(),
+                decimal_places,
+                min_decimal_places,
+            )),
             ValueIndicator::Format(format) => Some(format(value)),
         }
     }
 }
 
-/// Formats a value with the given number of digits after the decimal
-/// point, padding with zeros if necessary: `10.00`, `24.10`, `64.01`.
-fn format_decimal(value: f64, decimal_places: usize) -> String {
-    if value.abs() < 0.5 / 10_f64.powi(decimal_places as i32) {
+/// Formats a value with the given maximum number of digits after the decimal
+/// point, trimming trailing zeros while keeping at least `min_decimal_places`.
+fn format_decimal(value: f64, decimal_places: usize, min_decimal_places: usize) -> String {
+    let formatted = if value.abs() < 0.5 / 10_f64.powi(decimal_places as i32) {
         format!("{0:.1$}", 0.0, decimal_places)
     } else {
         format!("{value:.decimal_places$}")
+    };
+    trim_trailing_zeros(formatted, min_decimal_places)
+}
+
+fn trim_trailing_zeros(formatted: String, min_decimal_places: usize) -> String {
+    if let Some(dot_pos) = formatted.find('.') {
+        let integer = &formatted[..dot_pos];
+        let fraction = &formatted[dot_pos + 1..];
+        let trimmed = fraction.trim_end_matches('0');
+        let kept_len = trimmed.len().max(min_decimal_places).min(fraction.len());
+        if kept_len > 0 {
+            format!("{integer}.{}", &fraction[..kept_len])
+        } else {
+            integer.to_string()
+        }
+    } else {
+        formatted
     }
+}
+
+fn step_decimal_places(step: f64) -> usize {
+    const EPS: f64 = 1e-9;
+    if step <= 0.0 {
+        return 1;
+    }
+    let mut f = step.fract().abs();
+    if f < EPS {
+        return 0;
+    }
+    let mut count = 0;
+    while f > EPS && count < 10 {
+        f = (f * 10.0).fract();
+        count += 1;
+    }
+    count
 }
 
 /// An icon inset in the track of a [`Slider`].
@@ -684,7 +722,11 @@ where
     T: Copy + Display + Into<f64> + PartialOrd,
 {
     fn format_value(&self) -> Option<String> {
-        self.value_indicator.format(self.value, self.decimal_places)
+        let step_f64: f64 = self.step.into();
+        let min_decimal_places = step_decimal_places(step_f64);
+        let decimal_places = self.decimal_places.max(min_decimal_places);
+        self.value_indicator
+            .format(self.value, decimal_places, min_decimal_places)
     }
 }
 

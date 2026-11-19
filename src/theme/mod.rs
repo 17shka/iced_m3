@@ -735,3 +735,44 @@ impl ColorScheme for Theme {
         self.current().outline_variant
     }
 }
+
+impl iced_widget::scrollable::Catalog for Theme {
+    type Class<'a> = iced_widget::scrollable::StyleFn<'a, Self>;
+
+    fn default<'a>() -> Self::Class<'a> {
+        Box::new(|_theme, _status| iced_widget::scrollable::Style {
+            container: iced::widget::container::Style::default(),
+            vertical_rail: iced_widget::scrollable::Rail {
+                background: None,
+                border: iced::Border::default(),
+                scroller: iced_widget::scrollable::Scroller {
+                    background: iced::Background::Color(iced::Color::TRANSPARENT),
+                    border: iced::Border::default(),
+                },
+            },
+            horizontal_rail: iced_widget::scrollable::Rail {
+                background: None,
+                border: iced::Border::default(),
+                scroller: iced_widget::scrollable::Scroller {
+                    background: iced::Background::Color(iced::Color::TRANSPARENT),
+                    border: iced::Border::default(),
+                },
+            },
+            gap: None,
+            auto_scroll: iced_widget::scrollable::AutoScroll {
+                background: iced::Background::Color(iced::Color::TRANSPARENT),
+                border: iced::Border::default(),
+                shadow: iced::Shadow::default(),
+                icon: iced::Color::TRANSPARENT,
+            },
+        })
+    }
+
+    fn style(
+        &self,
+        class: &Self::Class<'_>,
+        status: iced_widget::scrollable::Status,
+    ) -> iced_widget::scrollable::Style {
+        class(self, status)
+    }
+}

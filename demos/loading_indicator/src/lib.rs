@@ -1,0 +1,47 @@
+use iced::{
+    Alignment, Element,
+    widget::{column, row, text},
+};
+use iced_m3::theme::{ColorScheme, Theme};
+
+#[derive(Clone)]
+pub enum Message {
+    Noop,
+}
+
+pub struct Page;
+
+impl Default for Page {
+    fn default() -> Self {
+        Self
+    }
+}
+
+impl Page {
+    pub fn update(&mut self, _message: Message) {}
+
+    pub fn subscription(&self) -> iced::Subscription<Message> {
+        iced::Subscription::none()
+    }
+
+    pub fn view(&self, theme: &Theme) -> Element<'_, Message> {
+        column![
+            text("Circular loading indicators")
+                .font(fonts::text_bold())
+                .size(18.0)
+                .color(theme.on_surface()),
+            row![
+                iced_m3::widget::loading_indicator(
+                    iced_m3::widget::loading_indicator::Style::contained(theme)
+                ),
+                iced_m3::widget::loading_indicator(
+                    iced_m3::widget::loading_indicator::Style::uncontained(theme)
+                ),
+            ]
+            .spacing(16)
+            .align_y(Alignment::Center),
+        ]
+        .spacing(24)
+        .into()
+    }
+}

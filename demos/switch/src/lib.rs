@@ -40,6 +40,10 @@ impl Demo {
         }
     }
 
+    pub fn subscription(&self) -> iced::Subscription<Message> {
+        iced::Subscription::none()
+    }
+
     pub fn view(&self, theme: &Theme) -> Element<'_, Message> {
         column![
             row![
@@ -99,3 +103,5 @@ impl Demo {
         .into()
     }
 }
+
+pub type Page = Demo;
