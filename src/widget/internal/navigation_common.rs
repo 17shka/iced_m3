@@ -10,6 +10,7 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NavigationItemStyle {
     pub content_active: Color,
+    pub label_content_active: Color,
     pub content_inactive: Color,
     pub container_color: Color,
     pub badge_style: widget::badge::Style,
@@ -19,9 +20,10 @@ pub struct NavigationItemStyle {
 impl NavigationItemStyle {
     pub fn new(theme: &(impl ColorScheme + ?Sized)) -> Self {
         Self {
-            container_color: theme.secondary_container(),
             content_active: theme.secondary(),
+            label_content_active: theme.secondary(),
             content_inactive: theme.on_surface_variant(),
+            container_color: theme.secondary_container(),
             badge_style: widget::badge::Style::new(theme),
             state_layer: StateLayer::new(theme.on_secondary_container()),
         }
@@ -42,13 +44,15 @@ where
 
 #[derive(Clone, Copy, PartialEq)]
 pub struct Colors {
-    pub content: Color,
+    pub icon: Color,
+    pub label: Color,
 }
 
 impl Interpolable for Colors {
     fn interpolate(self, other: Self, t: f32) -> Self {
         Self {
-            content: self.content.interpolate(other.content, t),
+            icon: self.icon.interpolate(other.icon, t),
+            label: self.label.interpolate(other.label, t),
         }
     }
 }

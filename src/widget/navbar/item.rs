@@ -168,7 +168,8 @@ where
             false => self.style.content_inactive,
         };
         let colors = Colors {
-            content: content_color,
+            icon: content_color,
+            label: content_color,
         };
         let state = State {
             is_pressed: false,
@@ -392,9 +393,9 @@ where
             );
         }
 
-        let content_color = state.color_spring.value().content;
+        let colors = state.color_spring.value();
         if let Some(icon) = &self.icon_paragraph {
-            renderer.fill_paragraph(icon, icon_bounds.position(), content_color, icon_bounds);
+            renderer.fill_paragraph(icon, icon_bounds.position(), colors.icon, icon_bounds);
         } else {
             let icon = match self.active {
                 true => &self.content.icon_active,
@@ -402,7 +403,7 @@ where
             };
             if let Icon::Svg(handle) = icon.clone() {
                 renderer.draw_svg(
-                    Svg::new(handle).color(content_color),
+                    Svg::new(handle).color(colors.icon),
                     icon_bounds,
                     icon_bounds,
                 );
@@ -410,7 +411,7 @@ where
         }
 
         if let Some(label) = &self.label_paragraph {
-            renderer.fill_paragraph(label, label_bounds.position(), content_color, label_bounds);
+            renderer.fill_paragraph(label, label_bounds.position(), colors.label, label_bounds);
         }
 
         if let Some(badge) = &self.badge {
@@ -495,7 +496,8 @@ where
             false => self.style.content_inactive,
         };
         let colors = Colors {
-            content: content_color,
+            icon: content_color,
+            label: content_color,
         };
         state.color_spring.set_target(colors, now);
         state

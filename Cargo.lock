@@ -484,6 +484,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f079e83a288787bcd14a6aea84cee5c87a67c5a3e660c30f557a3d24761b3527"
 
 [[package]]
+name = "checkbox"
+version = "0.1.0"
+dependencies = [
+ "fonts",
+ "iced",
+ "iced_m3",
+]
+
+[[package]]
 name = "clipboard-win"
 version = "5.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -706,6 +715,24 @@ name = "data-url"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
+
+[[package]]
+name = "demo_sliders"
+version = "0.1.0"
+dependencies = [
+ "fonts",
+ "iced",
+ "iced_m3",
+]
+
+[[package]]
+name = "demo_template"
+version = "0.1.0"
+dependencies = [
+ "fonts",
+ "iced",
+ "iced_m3",
+]
 
 [[package]]
 name = "dispatch"
@@ -2957,6 +2984,17 @@ name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
+
+[[package]]
+name = "showcase"
+version = "0.1.0"
+dependencies = [
+ "checkbox",
+ "fonts",
+ "iced",
+ "iced_m3",
+ "switch",
+]
 
 [[package]]
 name = "signal-hook-registry"

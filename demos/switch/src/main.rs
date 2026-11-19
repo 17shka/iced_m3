@@ -1,108 +1,63 @@
 use iced::{
-    Alignment, Element, Font, Length, Task,
+    Element, Font, Length, Task,
     widget::{column, container, row, text},
 };
 use iced_m3::{
-    animation::motion,
-    theme::{Accent, ColorScheme, Mode, Theme},
-    widget::{
-        self,
-        button::{self, Content},
-        switch::IconMode,
-    },
+    theme::{ColorScheme, Mode, Theme},
+    widget,
+    widget::{button, button::Content},
 };
 
 const APP_NAME: &str = "Switch Demo";
 
 #[derive(Clone)]
 enum Message {
-    Toggle1,
-    Toggle2,
-    SetIconMode(IconMode),
+    Demo(switch::Message),
+    SetTheme(Mode),
 }
 
 struct State {
     theme: Theme,
-    toggled1: bool,
-    toggled2: bool,
-    icon_mode: IconMode,
+    demo: switch::Demo,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
             theme: Theme::default(Mode::Dark),
-            toggled1: false,
-            toggled2: false,
-            icon_mode: IconMode::default(),
+            demo: switch::Demo::default(),
         }
     }
 }
 
 impl State {
     fn view(&self) -> Element<'_, Message> {
+        let theme_buttons = row![
+            widget::button(
+                button::Style::filled(&self.theme, iced_m3::theme::Accent::Primary),
+                Content::Label("Light".into()),
+            )
+            .on_press(Message::SetTheme(Mode::Light)),
+            widget::button(
+                button::Style::filled(&self.theme, iced_m3::theme::Accent::Secondary),
+                Content::Label("Dark".into()),
+            )
+            .on_press(Message::SetTheme(Mode::Dark)),
+        ]
+        .spacing(8);
+
         container(
             column![
-                text(APP_NAME)
+                text::Text::new(APP_NAME)
                     .font(fonts::text_bold())
-                    .size(24.0)
+                    .size(28.0)
                     .color(self.theme.on_surface()),
-                row![
-                    text("With expressive animation"),
-                    widget::switch(&self.theme, self.toggled1)
-                        .motion_scheme(motion::Scheme::Expressive)
-                        .icon_mode(self.icon_mode)
-                        .on_toggle(Message::Toggle1)
-                ]
-                .spacing(8)
-                .align_y(Alignment::Center),
-                row![
-                    text("With standard animation"),
-                    widget::switch(&self.theme, self.toggled2)
-                        .motion_scheme(motion::Scheme::Standard)
-                        .icon_mode(self.icon_mode)
-                        .on_toggle(Message::Toggle2)
-                ]
-                .spacing(8)
-                .align_y(Alignment::Center),
-                row![
-                    text("Disabled selected"),
-                    widget::switch(&self.theme, true).icon_mode(self.icon_mode),
-                ]
-                .spacing(8)
-                .align_y(Alignment::Center),
-                row![
-                    text("Disabled unselected"),
-                    widget::switch(&self.theme, false).icon_mode(self.icon_mode),
-                ]
-                .spacing(8)
-                .align_y(Alignment::Center),
-                column![
-                    text("Icon mode"),
-                    row![
-                        widget::button(
-                            button::Style::filled(&self.theme, Accent::default()),
-                            Content::Label("Never".into()),
-                        )
-                        .on_press(Message::SetIconMode(IconMode::Never)),
-                        widget::button(
-                            button::Style::filled(&self.theme, Accent::default()),
-                            Content::Label("When Selected".into()),
-                        )
-                        .on_press(Message::SetIconMode(IconMode::WhenSelected)),
-                        widget::button(
-                            button::Style::filled(&self.theme, Accent::default()),
-                            Content::Label("Always".into()),
-                        )
-                        .on_press(Message::SetIconMode(IconMode::Always))
-                    ]
-                    .spacing(8)
-                ]
-                .spacing(8)
+                theme_buttons,
+                self.demo.view(&self.theme).map(Message::Demo),
             ]
-            .spacing(20.0),
+            .spacing(24),
         )
-        .padding(10.0)
+        .padding(24.0)
         .width(Length::Fill)
         .height(Length::Fill)
         .style(|_| iced::widget::container::Style::default().background(self.theme.background()))
@@ -111,9 +66,8 @@ impl State {
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::Toggle1 => self.toggled1 = !self.toggled1,
-            Message::Toggle2 => self.toggled2 = !self.toggled2,
-            Message::SetIconMode(icon_mode) => self.icon_mode = icon_mode,
+            Message::Demo(msg) => self.demo.update(msg),
+            Message::SetTheme(mode) => self.theme.mode = mode,
         }
         Task::none()
     }

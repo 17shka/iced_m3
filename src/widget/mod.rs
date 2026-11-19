@@ -6,6 +6,7 @@ pub mod badge;
 pub mod button;
 pub mod button_group;
 pub mod card;
+pub mod checkbox;
 mod common_icons;
 mod common_types;
 pub mod dialog;
@@ -20,6 +21,7 @@ pub mod navbar;
 pub mod navrail;
 pub mod progress_bar;
 pub(crate) mod ripple;
+pub mod scrollable;
 #[cfg(feature = "shapes")]
 pub mod shapes;
 pub mod slider;
@@ -28,6 +30,7 @@ pub mod text_input;
 mod wrappers;
 
 pub use common_types::*;
+pub use scrollable::scrollable;
 pub use wrappers::*;
 
 use std::ops::RangeInclusive;
@@ -42,6 +45,7 @@ use crate::{
         button::Button,
         button_group::connected::ButtonGroup,
         card::Card,
+        checkbox::Checkbox,
         dialog::Dialog,
         fab::Fab,
         fab_menu::FABMenu,
@@ -124,11 +128,28 @@ pub fn slider<'a, F, T, Message>(
 ) -> slider::Slider<'a, T, Message>
 where
     F: 'a + Fn(T) -> Message,
-    T: 'a + Copy + From<u8> + PartialOrd + num_traits::cast::FromPrimitive,
+    T: 'a + Copy + std::fmt::Display + From<u8> + PartialOrd + num_traits::cast::FromPrimitive,
     Message: 'a + Clone,
     f64: std::convert::From<T>,
 {
     slider::Slider::new(range, value, on_change, style)
+}
+
+#[must_use]
+pub fn range_slider<'a, F, T, Message>(
+    range: RangeInclusive<T>,
+    start: T,
+    end: T,
+    on_change: F,
+    style: slider::Style,
+) -> slider::RangeSlider<'a, T, Message>
+where
+    F: 'a + Fn(T, T) -> Message,
+    T: 'a + Copy + std::fmt::Display + From<u8> + PartialOrd + num_traits::cast::FromPrimitive,
+    Message: 'a + Clone,
+    f64: std::convert::From<T>,
+{
+    slider::RangeSlider::new(range, start, end, on_change, style)
 }
 
 #[must_use]
@@ -189,6 +210,17 @@ where
     Message: Clone,
 {
     Switch::new(theme, toggled)
+}
+
+#[must_use]
+pub fn checkbox<Message>(
+    theme: &(impl ColorScheme + ?Sized),
+    value: checkbox::Value,
+) -> Checkbox<Message>
+where
+    Message: Clone,
+{
+    Checkbox::new(theme, value)
 }
 
 #[must_use]

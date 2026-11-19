@@ -1,7 +1,8 @@
 use std::time::Instant;
 
 use iced::{
-    Border, Color, Element, Event, Font, Length, Point, Radians, Rectangle, Size,
+    Border, Color, Element, Event, Font, Length, Point, Radians, Rectangle, Size, Transformation,
+    Vector,
     advanced::{
         Widget,
         layout::{Limits, Node},
@@ -12,7 +13,7 @@ use iced::{
         widget::{Tree, tree},
     },
     border::Radius,
-    touch,
+    touch, window,
 };
 
 use crate::{
@@ -35,6 +36,9 @@ use crate::{
 const BUTTON_SIZE: fab::Size = fab::Size::Regular;
 const BUTTON_TRIGGER_BETWEEN_SPACE: f32 = 8.0;
 const BUTTON_SPACING: f32 = 4.0;
+const ITEM_START_SCALE: f32 = 0.4;
+const ITEM_STAGGER: f32 = 0.12;
+const ITEMS_READY_PROGRESS: f32 = 0.98;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StateStyle {
@@ -195,8 +199,24 @@ struct State {
     style_spring: SpringValue<StateStyle>,
     icon_rotation_spring: SpringValue<Radians>,
     corner_radius_spring: SpringValue<Radius>,
+    expansion_spring: SpringValue<f32>,
+    presented_progress: f32,
+    items_ready: bool,
     ripple: Ripple,
     last_style: Style,
+}
+
+impl State {
+    fn is_open(&self) -> bool {
+        self.is_expanded && self.items_ready
+    }
+}
+
+fn item_progress(progress: f32, index: usize, item_count: usize) -> f32 {
+    let stagger = ITEM_STAGGER * index as f32;
+    let span = 1.0 + ITEM_STAGGER * item_count.saturating_sub(1) as f32;
+
+    (progress * span - stagger).clamp(0.0, 1.0)
 }
 
 impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer>
@@ -231,6 +251,9 @@ where
                 spatial_spring,
                 now,
             ),
+            expansion_spring: SpringValue::new(0.0, spatial_spring, now),
+            presented_progress: 0.0,
+            items_ready: false,
             ripple: Ripple::new(),
             last_style: self.style,
         };
@@ -368,6 +391,9 @@ where
             if state.corner_radius_spring.spring.model != spring {
                 state.corner_radius_spring.spring.model = spring;
             }
+            if state.expansion_spring.spring.model != spring {
+                state.expansion_spring.spring.model = spring;
+            }
         }
         if let Some(spring) = self.effects_spring
             && state.style_spring.spring.model != spring
@@ -398,10 +424,14 @@ where
         }
         state.corner_radius_spring.set_target(corner_radius, now);
         state.icon_rotation_spring.set_target(icon_rotation, now);
+        state
+            .expansion_spring
+            .set_target(f32::from(state.is_expanded), now);
 
         if !state.style_spring.is_at_rest()
             || !state.corner_radius_spring.is_at_rest()
             || !state.icon_rotation_spring.is_at_rest()
+            || !state.expansion_spring.is_at_rest()
         {
             shell.request_redraw();
         }
@@ -409,6 +439,15 @@ where
         state.style_spring.step(now);
         state.corner_radius_spring.step(now);
         state.icon_rotation_spring.step(now);
+        state.expansion_spring.step(now);
+        state.presented_progress = match state.is_expanded {
+            true => state.expansion_spring.value().max(0.0),
+            false => state.expansion_spring.value().min(state.presented_progress),
+        };
+        state.items_ready = match state.is_expanded {
+            true => state.items_ready || state.presented_progress >= ITEMS_READY_PROGRESS,
+            false => false,
+        };
     }
 
     fn mouse_interaction(
@@ -432,16 +471,17 @@ where
         layout: iced::advanced::Layout<'b>,
         _renderer: &Renderer,
         _viewport: &Rectangle,
-        _translation: iced::Vector,
+        _translation: Vector,
     ) -> Option<iced::advanced::overlay::Element<'b, Message, Theme, Renderer>> {
         let state = tree.state.downcast_ref::<State>();
-        state
-            .is_expanded
-            .then_some(overlay::Element::new(Box::new(Overlay {
-                base_bounds: layout.bounds(),
-                tree,
-                items: &mut self.items,
-            })))
+
+        let is_animating = state.presented_progress > 0.0;
+
+        (state.is_expanded || is_animating).then_some(overlay::Element::new(Box::new(Overlay {
+            base_bounds: layout.bounds(),
+            tree,
+            items: &mut self.items,
+        })))
     }
 }
 
@@ -474,7 +514,7 @@ where
 {
     fn layout(&mut self, renderer: &Renderer, bounds: iced::Size) -> iced::advanced::layout::Node {
         let item_height = BUTTON_SIZE.container_height();
-        let children: Vec<_> = self
+        let items: Vec<_> = self
             .items
             .iter_mut()
             .enumerate()
@@ -494,7 +534,29 @@ where
             })
             .collect();
 
-        Node::with_children(self.base_bounds.size(), children).move_to(self.base_bounds.position())
+        let min_x = items
+            .iter()
+            .map(|item| item.bounds().x)
+            .fold(0.0f32, f32::min);
+        let min_y = items
+            .iter()
+            .map(|item| item.bounds().y)
+            .fold(0.0f32, f32::min);
+        let children = items
+            .into_iter()
+            .map(|item| {
+                let bounds = item.bounds();
+                item.move_to(Point::new(bounds.x - min_x, bounds.y - min_y))
+            })
+            .collect();
+
+        let size = Size::new(
+            self.base_bounds.width - min_x,
+            self.base_bounds.height - min_y,
+        );
+
+        Node::with_children(size, children)
+            .move_to(self.base_bounds.position() + Vector::new(min_x, min_y))
     }
 
     fn draw(
@@ -505,17 +567,43 @@ where
         layout: iced::advanced::Layout<'_>,
         cursor: iced::advanced::mouse::Cursor,
     ) {
-        let viewport = iced::Rectangle::new(iced::Point::ORIGIN, layout.bounds().size());
+        let state = self.tree.state.downcast_ref::<State>();
+        let progress = state.presented_progress;
+        let viewport = layout.bounds();
+        let trigger_center = self.base_bounds.center();
+
         for (i, item) in self.items.iter().enumerate() {
-            item.as_widget().draw(
-                &self.tree.children[i],
-                renderer,
-                theme,
-                style,
-                layout.child(i),
-                cursor,
-                &viewport,
+            let item_progress = item_progress(progress, i, self.items.len());
+            if item_progress <= 0.0 {
+                continue;
+            }
+
+            let item_layout = layout.child(i);
+            let bounds = item_layout.bounds();
+            let item_center = bounds.center();
+
+            let translation = Vector::new(
+                (trigger_center.x - item_center.x) * (1.0 - item_progress),
+                (trigger_center.y - item_center.y) * (1.0 - item_progress),
             );
+            let scale = ITEM_START_SCALE + (1.0 - ITEM_START_SCALE) * item_progress;
+
+            let center = item_center + translation;
+            let transformation = Transformation::translate(center.x, center.y)
+                * Transformation::scale(scale)
+                * Transformation::translate(-center.x, -center.y);
+
+            renderer.with_transformation(transformation, |renderer| {
+                item.as_widget().draw(
+                    &self.tree.children[i],
+                    renderer,
+                    theme,
+                    style,
+                    item_layout,
+                    cursor,
+                    &viewport,
+                );
+            });
         }
     }
 
@@ -528,34 +616,64 @@ where
         clipboard: &mut dyn iced::advanced::Clipboard,
         shell: &mut iced::advanced::Shell<'_, Message>,
     ) {
-        let viewport = iced::Rectangle::new(iced::Point::ORIGIN, layout.bounds().size());
-        for (i, item) in self.items.iter_mut().enumerate() {
-            item.as_widget_mut().update(
-                &mut self.tree.children[i],
-                event,
-                layout.child(i),
-                cursor,
-                renderer,
-                clipboard,
-                shell,
-                &viewport,
-            );
+        let is_open = self.tree.state.downcast_ref::<State>().is_open();
+
+        if is_open {
+            let viewport = layout.bounds();
+            for (i, item) in self.items.iter_mut().enumerate() {
+                item.as_widget_mut().update(
+                    &mut self.tree.children[i],
+                    event,
+                    layout.child(i),
+                    cursor,
+                    renderer,
+                    clipboard,
+                    shell,
+                    &viewport,
+                );
+            }
+        } else if let Event::Window(window::Event::RedrawRequested(_)) = event {
+            let viewport = layout.bounds();
+            let cursor = iced::advanced::mouse::Cursor::Unavailable;
+
+            for (i, item) in self.items.iter_mut().enumerate() {
+                item.as_widget_mut().update(
+                    &mut self.tree.children[i],
+                    event,
+                    layout.child(i),
+                    cursor,
+                    renderer,
+                    clipboard,
+                    shell,
+                    &viewport,
+                );
+            }
         }
 
-        let should_close = match event {
-            Event::Mouse(iced::mouse::Event::ButtonPressed(_)) => {
-                !shell.is_event_captured() && !cursor.is_over(self.base_bounds)
-            }
-            Event::Mouse(iced::mouse::Event::ButtonReleased(_)) => {
-                !cursor.is_over(self.base_bounds)
-            }
-            _ => false,
-        };
+        let over_menu = cursor.is_over(self.base_bounds)
+            || (0..self.items.len()).any(|i| cursor.is_over(layout.child(i).bounds()));
+
+        let state = self.tree.state.downcast_ref::<State>();
+        let should_close = state.is_expanded
+            && match event {
+                Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
+                | Event::Touch(touch::Event::FingerPressed { .. }) => {
+                    !shell.is_event_captured() && !over_menu
+                }
+                Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
+                | Event::Touch(touch::Event::FingerLifted { .. }) => {
+                    !over_menu || (is_open && shell.is_event_captured())
+                }
+                _ => false,
+            };
 
         if should_close {
+            shell.capture_event();
+
             let state = self.tree.state.downcast_mut::<State>();
             state.is_expanded = false;
-            shell.invalidate_widgets();
+
+            state.is_pressed = false;
             shell.request_redraw();
         }
     }
@@ -566,6 +684,11 @@ where
         cursor: iced::advanced::mouse::Cursor,
         _renderer: &Renderer,
     ) -> iced::advanced::mouse::Interaction {
+        let state = self.tree.state.downcast_ref::<State>();
+        if !state.is_open() {
+            return iced::mouse::Interaction::None;
+        }
+
         for (i, _) in self.items.iter().enumerate() {
             if cursor.is_over(layout.child(i).bounds()) {
                 return iced::mouse::Interaction::Pointer;
