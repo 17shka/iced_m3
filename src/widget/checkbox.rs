@@ -30,50 +30,37 @@ const OUTLINE_WIDTH: f32 = 2.0;
 const STATE_LAYER_SIZE: f32 = 40.0;
 const DISABLED_OPACITY: f32 = 0.38;
 
-/// The current value of a [`Checkbox`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Value {
-    /// The checkbox is not selected.
     #[default]
     Unchecked,
-    /// The checkbox is selected with a checkmark.
     Checked,
-    /// The checkbox is selected with an indeterminate dash.
     Indeterminate,
 }
 
 impl Value {
-    /// Returns `true` if the value is [`Checked`].
     pub fn is_checked(self) -> bool {
         matches!(self, Self::Checked)
     }
 
-    /// Returns `true` if the value is [`Unchecked`].
     pub fn is_unchecked(self) -> bool {
         matches!(self, Self::Unchecked)
     }
 
-    /// Returns `true` if the value is [`Indeterminate`].
     pub fn is_indeterminate(self) -> bool {
         matches!(self, Self::Indeterminate)
     }
 
-    /// Returns `true` if the value is either [`Checked`] or [`Indeterminate`].
     pub fn is_selected(self) -> bool {
         matches!(self, Self::Checked | Self::Indeterminate)
     }
 }
 
-/// The visual style of a single checkbox state.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StateStyle {
-    /// The fill color of the checkbox box.
     pub background_color: Color,
-    /// The color of the checkmark or indeterminate dash.
     pub icon_color: Color,
-    /// The width of the outline.
     pub outline_width: f32,
-    /// The color of the outline.
     pub outline_color: Color,
 }
 
@@ -88,34 +75,23 @@ impl Interpolable for StateStyle {
     }
 }
 
-/// The full set of styles for a [`Checkbox`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Style {
-    /// The state layer used when the checkbox is selected.
     pub state_layer_selected: StateLayer,
-    /// The state layer used when the checkbox is unselected.
     pub state_layer_unselected: StateLayer,
-    /// The style of a checked, enabled checkbox.
     pub checked: StateStyle,
-    /// The style of a checked, disabled checkbox.
     pub checked_disabled: StateStyle,
-    /// The style of an unchecked, enabled checkbox.
     pub unchecked: StateStyle,
-    /// The style of an unchecked, disabled checkbox.
     pub unchecked_disabled: StateStyle,
-    /// The style of an indeterminate, enabled checkbox.
     pub indeterminate: StateStyle,
-    /// The style of an indeterminate, disabled checkbox.
     pub indeterminate_disabled: StateStyle,
 }
 
 impl Style {
-    /// Creates a new [`Style`] using the default (non-error) colors.
     pub fn new(theme: &(impl ColorScheme + ?Sized)) -> Self {
         Self::with_error_flag(theme, false)
     }
 
-    /// Creates a new [`Style`] using the error color palette.
     pub fn error(theme: &(impl ColorScheme + ?Sized)) -> Self {
         Self::with_error_flag(theme, true)
     }
@@ -199,13 +175,6 @@ impl Style {
     }
 }
 
-/// A Material Design 3 animated checkbox.
-///
-/// # Example
-/// ```ignore
-/// widget::checkbox(&theme, Value::Checked)
-///     .on_toggle(Message::ToggleCheckbox)
-/// ```
 pub struct Checkbox<Message>
 where
     Message: Clone,
@@ -222,8 +191,6 @@ impl<Message> Checkbox<Message>
 where
     Message: Clone,
 {
-    /// Creates a new [`Checkbox`] with the given theme and value.
-    #[must_use]
     pub fn new(theme: &(impl ColorScheme + ?Sized), value: Value) -> Self {
         Self {
             style: Style::new(theme),
@@ -235,44 +202,32 @@ where
         }
     }
 
-    /// Sets whether this checkbox uses the error color palette.
-    #[must_use]
     pub fn error(mut self, is_error: bool, theme: &(impl ColorScheme + ?Sized)) -> Self {
         self.style = Style::with_error_flag(theme, is_error);
         self
     }
 
-    /// Sets the message that will be produced when the checkbox is toggled.
-    #[must_use]
     pub fn on_toggle(mut self, on_toggle: Message) -> Self {
         self.on_toggle = Some(on_toggle);
         self
     }
 
-    /// Sets the message that will be produced when the checkbox is toggled, if any.
-    #[must_use]
     pub fn on_toggle_maybe(mut self, on_toggle: Option<Message>) -> Self {
         self.on_toggle = on_toggle;
         self
     }
 
-    /// Sets the animation scheme to the given pre-defined scheme.
-    #[must_use]
     pub fn motion_scheme(mut self, scheme: motion::Scheme) -> Self {
         self.effects_spring = Some(fast_effects(scheme));
         self.spatial_spring = Some(fast_spatial(scheme));
         self
     }
 
-    /// Overrides the effects spring with the given one.
-    #[must_use]
     pub fn effects_spring(mut self, spring: Spring) -> Self {
         self.effects_spring = Some(spring);
         self
     }
 
-    /// Overrides the spatial spring with the given one.
-    #[must_use]
     pub fn spatial_spring(mut self, spring: Spring) -> Self {
         self.spatial_spring = Some(spring);
         self
@@ -282,8 +237,7 @@ where
 struct State {
     ripple: Ripple,
     is_pressed: bool,
-    left_leg: SpringValue<f32>,
-    right_leg: SpringValue<f32>,
+    check: SpringValue<f32>,
     dash: SpringValue<f32>,
     style_spring: SpringValue<StateStyle>,
     last_effects_spring: Spring,
@@ -294,8 +248,7 @@ struct State {
 
 impl State {
     fn set_spatial_spring(&mut self, spatial: Spring) {
-        self.left_leg.spring.model = spatial;
-        self.right_leg.spring.model = spatial;
+        self.check.spring.model = spatial;
         self.dash.spring.model = spatial;
     }
 
@@ -323,17 +276,16 @@ where
         let spatial_spring = self
             .spatial_spring
             .unwrap_or(fast_spatial(motion::Scheme::default()));
-        let (left, right, dash) = match self.value {
-            Value::Unchecked => (0.0, 0.0, 0.0),
-            Value::Checked => (1.0, 1.0, 0.0),
-            Value::Indeterminate => (0.0, 0.0, 1.0),
+        let (check, dash) = match self.value {
+            Value::Unchecked => (0.0, 0.0),
+            Value::Checked => (1.0, 0.0),
+            Value::Indeterminate => (0.0, 1.0),
         };
 
         let state = State {
             ripple: Ripple::new(),
             is_pressed: false,
-            left_leg: SpringValue::new(left, spatial_spring, now),
-            right_leg: SpringValue::new(right, spatial_spring, now),
+            check: SpringValue::new(check, spatial_spring, now),
             dash: SpringValue::new(dash, spatial_spring, now),
             style_spring: SpringValue::new(target_style, effects_spring, now),
             last_effects_spring: effects_spring,
@@ -394,11 +346,10 @@ where
             style.background_color,
         );
 
-        let left_val = state.left_leg.value().max(0.0).min(1.0);
-        let right_val = state.right_leg.value().max(0.0).min(1.0);
+        let check_val = state.check.value().max(0.0).min(1.0);
         let dash_val = state.dash.value().max(0.0).min(1.0);
 
-        let has_icon = left_val > 0.05 || right_val > 0.05 || dash_val > 0.05;
+        let has_icon = check_val > 0.05 || dash_val > 0.05;
 
         if has_icon {
             let enabled = self.on_toggle.is_some();
@@ -414,11 +365,11 @@ where
             if icon_color.a > 0.0 {
                 let mut frame = canvas::Frame::new(&*renderer, checkbox_bounds.size());
 
-                // Left leg: (3.62, 9.0) -> (6.75, 12.13)
-                if left_val > 0.05 {
+                let left_progress = (check_val * 2.0).clamp(0.0, 1.0);
+                if left_progress > 0.05 {
                     let start = Point::new(3.62, 9.0);
                     let end = Point::new(6.75, 12.13);
-                    let alpha = icon_color.a * left_val;
+                    let alpha = icon_color.a * left_progress;
                     let color = Color {
                         r: icon_color.r,
                         g: icon_color.g,
@@ -426,8 +377,8 @@ where
                         a: alpha,
                     };
                     let current_end = Point::new(
-                        start.x + (end.x - start.x) * left_val,
-                        start.y + (end.y - start.y) * left_val,
+                        start.x + (end.x - start.x) * left_progress,
+                        start.y + (end.y - start.y) * left_progress,
                     );
                     let path = canvas::Path::line(start, current_end);
                     let stroke = canvas::Stroke::default()
@@ -437,11 +388,11 @@ where
                     frame.stroke(&path, stroke);
                 }
 
-                // Right leg: (6.75, 12.13) -> (15.75, 5.25)
-                if right_val > 0.05 {
+                let right_progress = ((check_val - 0.5) * 2.0).clamp(0.0, 1.0);
+                if right_progress > 0.05 {
                     let start = Point::new(6.75, 12.13);
                     let end = Point::new(15.75, 5.25);
-                    let alpha = icon_color.a * right_val;
+                    let alpha = icon_color.a * right_progress;
                     let color = Color {
                         r: icon_color.r,
                         g: icon_color.g,
@@ -449,8 +400,8 @@ where
                         a: alpha,
                     };
                     let current_end = Point::new(
-                        start.x + (end.x - start.x) * right_val,
-                        start.y + (end.y - start.y) * right_val,
+                        start.x + (end.x - start.x) * right_progress,
+                        start.y + (end.y - start.y) * right_progress,
                     );
                     let path = canvas::Path::line(start, current_end);
                     let stroke = canvas::Stroke::default()
@@ -460,7 +411,6 @@ where
                     frame.stroke(&path, stroke);
                 }
 
-                // Dash: (3.0, 9.0) -> (15.0, 9.0)
                 if dash_val > 0.05 {
                     let start = Point::new(3.0, 9.0);
                     let end = Point::new(15.0, 9.0);
@@ -562,33 +512,24 @@ where
             state.style_spring.set_target(target_style, now);
         }
 
-        let (left_target, right_target, dash_target) = match self.value {
-            Value::Unchecked => (0.0, 0.0, 0.0),
-            Value::Checked => (1.0, 1.0, 0.0),
-            Value::Indeterminate => (0.0, 0.0, 1.0),
+        let (check_target, dash_target) = match self.value {
+            Value::Unchecked => (0.0, 0.0),
+            Value::Checked => (1.0, 0.0),
+            Value::Indeterminate => (0.0, 1.0),
         };
-        state.left_leg.set_target(left_target, now);
-        state.right_leg.set_target(right_target, now);
+        state.check.set_target(check_target, now);
         state.dash.set_target(dash_target, now);
 
-        if !state.left_leg.is_at_rest()
-            || !state.right_leg.is_at_rest()
-            || !state.dash.is_at_rest()
-            || !state.style_spring.is_at_rest()
+        if !state.check.is_at_rest() || !state.dash.is_at_rest() || !state.style_spring.is_at_rest()
         {
             shell.request_redraw();
         }
 
-        state.left_leg.step(now);
-        state.right_leg.step(now);
+        state.check.step(now);
         state.dash.step(now);
         state.style_spring.step(now);
 
-        if state.left_leg.is_at_rest()
-            && state.right_leg.is_at_rest()
-            && state.dash.is_at_rest()
-            && state.style_spring.is_at_rest()
-        {
+        if state.check.is_at_rest() && state.dash.is_at_rest() && state.style_spring.is_at_rest() {
             state.last_value = self.value;
         }
 

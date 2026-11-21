@@ -20,28 +20,59 @@ struct ScrollableWrapper<'a, Message, Theme, Renderer> {
     scrollbar_width: f32,
     scrollbar_margin: f32,
     scroller_width: f32,
-    alignment: Anchor,
+    vertical_alignment: Anchor,
+    horizontal_alignment: Anchor,
+    is_vertical: bool,
+    is_horizontal: bool,
 }
 
 impl<'a, Message, Theme, Renderer> ScrollableWrapper<'a, Message, Theme, Renderer> {
     fn is_over_rail(&self, bounds: Rectangle, cursor_position: Point) -> bool {
-        let total_width =
-            self.scrollbar_width.max(self.scroller_width) + 2.0 * self.scrollbar_margin;
+        if self.is_vertical {
+            let total_width =
+                self.scrollbar_width.max(self.scroller_width) + 2.0 * self.scrollbar_margin;
 
-        let rail_x = if self.alignment == Anchor::End {
-            bounds.x + bounds.width - total_width
-        } else {
-            bounds.x
-        };
+            let rail_x = if self.vertical_alignment == Anchor::End {
+                bounds.x + bounds.width - total_width
+            } else {
+                bounds.x
+            };
 
-        let rail_bounds = Rectangle {
-            x: rail_x,
-            y: bounds.y,
-            width: total_width,
-            height: bounds.height,
-        };
+            let rail_bounds = Rectangle {
+                x: rail_x,
+                y: bounds.y,
+                width: total_width,
+                height: bounds.height,
+            };
 
-        rail_bounds.contains(cursor_position)
+            if rail_bounds.contains(cursor_position) {
+                return true;
+            }
+        }
+
+        if self.is_horizontal {
+            let total_height =
+                self.scrollbar_width.max(self.scroller_width) + 2.0 * self.scrollbar_margin;
+
+            let rail_y = if self.horizontal_alignment == Anchor::End {
+                bounds.y + bounds.height - total_height
+            } else {
+                bounds.y
+            };
+
+            let rail_bounds = Rectangle {
+                x: bounds.x,
+                y: rail_y,
+                width: bounds.width,
+                height: total_height,
+            };
+
+            if rail_bounds.contains(cursor_position) {
+                return true;
+            }
+        }
+
+        false
     }
 }
 
@@ -210,6 +241,9 @@ pub struct Scrollable<'a, Message, Theme, Renderer> {
     height: Length,
     spacing: f32,
     direction: Direction,
+    vertical_alignment: Anchor,
+    horizontal_alignment: Anchor,
+    embed: bool,
 }
 
 impl<'a, Message, Theme, Renderer> Scrollable<'a, Message, Theme, Renderer> {
@@ -224,6 +258,9 @@ impl<'a, Message, Theme, Renderer> Scrollable<'a, Message, Theme, Renderer> {
             height: Length::Shrink,
             spacing: 0.0,
             direction: Direction::Vertical(Scrollbar::new()),
+            vertical_alignment: Anchor::End,
+            horizontal_alignment: Anchor::End,
+            embed: true,
         }
     }
 
@@ -246,6 +283,21 @@ impl<'a, Message, Theme, Renderer> Scrollable<'a, Message, Theme, Renderer> {
         self.direction = direction;
         self
     }
+
+    pub fn vertical_anchor(mut self, alignment: Anchor) -> Self {
+        self.vertical_alignment = alignment;
+        self
+    }
+
+    pub fn horizontal_anchor(mut self, alignment: Anchor) -> Self {
+        self.horizontal_alignment = alignment;
+        self
+    }
+
+    pub fn embed(mut self, embed: bool) -> Self {
+        self.embed = embed;
+        self
+    }
 }
 
 impl<'a, Message, Theme, Renderer> From<Scrollable<'a, Message, Theme, Renderer>>
@@ -259,11 +311,25 @@ where
     fn from(builder: Scrollable<'a, Message, Theme, Renderer>) -> Self {
         let scrollbar_color = builder.scrollbar_color;
 
-        let inner = iced::widget::scrollable(builder.content)
+        let is_vertical = matches!(
+            builder.direction,
+            Direction::Vertical(_) | Direction::Both { .. }
+        );
+        let is_horizontal = matches!(
+            builder.direction,
+            Direction::Horizontal(_) | Direction::Both { .. }
+        );
+
+        let mut scrollable = iced::widget::scrollable(builder.content)
             .width(builder.width)
             .height(builder.height)
-            .spacing(builder.spacing)
-            .direction(builder.direction)
+            .direction(builder.direction);
+
+        if builder.embed {
+            scrollable = scrollable.spacing(builder.spacing);
+        }
+
+        let inner = scrollable
             .style(move |_theme: &Theme, status| {
                 let color = match status {
                     Status::Active { .. } => scrollbar_color.scale_alpha(0.15),
@@ -312,12 +378,14 @@ where
             scrollbar_width: 4.0,
             scrollbar_margin: 2.0,
             scroller_width: 4.0,
-            alignment: Anchor::End,
+            vertical_alignment: builder.vertical_alignment,
+            horizontal_alignment: builder.horizontal_alignment,
+            is_vertical,
+            is_horizontal,
         })
     }
 }
 
-/// Creates a new Material Design 3 styled [`Scrollable`].
 #[must_use]
 pub fn scrollable<'a, Message, Theme, Renderer>(
     theme: &impl ColorScheme,
@@ -345,6 +413,6 @@ where
             .width(4)
             .scroller_width(4)
             .margin(2)
-            .anchor(Anchor::End),
+            .anchor(Anchor::Start),
     ))
 }

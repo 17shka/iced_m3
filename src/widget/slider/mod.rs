@@ -371,15 +371,13 @@ impl Interpolable for Style {
 struct State<P: text::Paragraph> {
     is_dragging: bool,
     drag_factor: Option<f32>,
-    /// The place the handle chases while dragging, trailing the pointer by a
-    /// small delay. The chase mirrors itself into the position spring, which
-    /// stays the single source the track fill and the label follow.
+    /// Handle position chased during drag, shown slightly behind the cursor.
+    /// The position spring reads this as its target.
     drag_display: f32,
     keyboard_modifiers: keyboard::Modifiers,
     is_focused: bool,
-    /// Whether the focus was granted by the keyboard: the focus ring and the
-    /// resting value indicator are shown for keyboard focus only, pointer
-    /// focus just enables the keyboard shortcuts.
+    /// True when focus came from the keyboard: only keyboard focus shows the
+    /// focus ring and resting value indicator.
     keyboard_focus: bool,
     ripple: Ripple,
     handle_width_spring: SpringValue<f32>,
@@ -421,10 +419,8 @@ impl<P: text::Paragraph> State<P> {
     }
 
     fn step(&mut self, now: Instant) {
-        // While a drag chases the pointer, the chase drives the position
-        // spring through itself: the spring is reset to the chased place
-        // every frame, so the handle trails the pointer by a fixed,
-        // frame rate independent delay.
+        // While dragging, chase the pointer: reset the position spring each
+        // frame so the handle trails the cursor by a fixed delay.
         if self.is_dragging
             && let Some(target) = self.drag_factor
         {
@@ -793,16 +789,7 @@ where
     }
 
     fn size(&self) -> iced::Size<Length> {
-        match self.axis {
-            Axis::Horizontal => iced::Size {
-                width: self.width,
-                height: Length::Fixed(self.size.handle_height),
-            },
-            Axis::Vertical => iced::Size {
-                width: Length::Fixed(self.size.handle_height),
-                height: self.height,
-            },
-        }
+        slider_size(self.axis, self.width, self.height, self.size.handle_height)
     }
 
     fn layout(
@@ -811,10 +798,13 @@ where
         _renderer: &Renderer,
         limits: &iced::advanced::layout::Limits,
     ) -> layout::Node {
-        match self.axis {
-            Axis::Horizontal => layout::atomic(limits, self.width, self.size.handle_height),
-            Axis::Vertical => layout::atomic(limits, self.size.handle_height, self.height),
-        }
+        slider_layout(
+            self.axis,
+            self.width,
+            self.height,
+            self.size.handle_height,
+            limits,
+        )
     }
 
     fn operate(
@@ -849,8 +839,8 @@ where
         let handle_width = state.handle_width_spring.value();
         let handle_center = center_at(len, handle_width, state.handle_position_spring.value());
         let circle = handle_circle(self.axis, bounds, self.size.handle_height, handle_center);
-        // While a drag is in progress the pointer can leave the handle, but
-        // the state layer has to stay hovered until the button is released
+        // While dragging, keep the state layer hovered even if the pointer
+        // leaves the handle.
         let interaction_bounds = if state.is_dragging {
             huge_bounds(bounds)
         } else {
@@ -886,8 +876,8 @@ where
             state.style_spring.set_target(resolved_style, now);
         }
 
-        // While a drag chases the pointer, `State::step` keeps the handle's
-        // spring pinned to the chase; otherwise it glides to the value.
+        // While dragging, `State::step` pins the spring to the chase;
+        // otherwise it glides to the value.
         if state.drag_factor.is_none() {
             state
                 .handle_position_spring
@@ -916,10 +906,8 @@ where
         let label_content = self.format_value().unwrap_or_default();
         if state.label_content != label_content {
             state.label_content = label_content;
-            // The paragraph is bootstrapped with the renderer's icon font;
-            // refresh it so that it settles on the renderer's default font and
-            // re-measures when the content changes.
-            let _ = state.label_paragraph.update(label_text(
+            // Re-measure the paragraph when the label content changes.
+            state.label_paragraph.update(label_text(
                 renderer.default_font(),
                 state.label_content.as_str(),
             ));
@@ -950,7 +938,7 @@ where
         if state.is_animating() {
             shell.request_redraw();
         }
-        // Those DO need to be updated every frame, otherwise wacky things happen
+        // step() must run every frame to keep springs animating.
         state.step(now);
 
         // --- Interaction
@@ -983,8 +971,8 @@ where
                         state.is_focused = true;
                         shell.request_redraw();
                     }
-                    // Pointer focus enables the keyboard shortcuts, but hides
-                    // the keyboard-only focus ring and resting value indicator
+                    // Pointer focus enables keyboard shortcuts but hides the
+                    // keyboard-only focus ring and resting value indicator.
                     state.keyboard_focus = false;
 
                     if state.keyboard_modifiers.command() {
@@ -994,10 +982,8 @@ where
                     } else if let Some(new_value) = locate(position) {
                         change(self, shell, new_value);
                         state.is_dragging = true;
-                        // No drag factor yet: the handle glides from its
-                        // current position to the pressed one instead of
-                        // teleporting. Direct pointer tracking starts with
-                        // the first cursor move.
+                        // No drag factor yet: glide to the pressed value instead of
+                        // teleporting; pointer tracking starts on first move.
                         state.drag_factor = None;
                     }
 
@@ -1033,8 +1019,7 @@ where
                         && let Some(new_value) = locate(position)
                     {
                         change(self, shell, new_value);
-                        // The chase continues from wherever the press glide
-                        // has brought the handle when the pointer first moves.
+                        // Chase continues from wherever the press glide brought the handle.
                         if state.drag_factor.is_none() {
                             state.drag_display = state.handle_position_spring.value();
                         }
@@ -1254,7 +1239,7 @@ where
                     }
                 }
                 if inactive.end >= len {
-                    // Segment touching the end of the track
+                    // End stop indicator
                     if inactive.end - inactive.start > STOP_INDICATOR_MIN_SEGMENT {
                         let main = len - STOP_INDICATOR_TRAILING_SPACE - STOP_INDICATOR_SIZE / 2.0;
                         draw_stop_indicator(
@@ -1353,28 +1338,11 @@ where
         _renderer: &Renderer,
     ) -> mouse::Interaction {
         let state = tree.state.downcast_ref::<State<Renderer::Paragraph>>();
-
-        if self.on_change.is_none() {
-            return mouse::Interaction::default();
-        }
-
-        if state.is_dragging {
-            // FIXME: Fall back to `Pointer` on Windows
-            // See https://github.com/rust-windowing/winit/issues/1043
-            if cfg!(target_os = "windows") {
-                mouse::Interaction::Pointer
-            } else {
-                mouse::Interaction::Grabbing
-            }
-        } else if cursor.is_over(layout.bounds()) {
-            if cfg!(target_os = "windows") {
-                mouse::Interaction::Pointer
-            } else {
-                mouse::Interaction::Grab
-            }
-        } else {
-            mouse::Interaction::default()
-        }
+        slider_mouse_interaction(
+            self.on_change.is_none(),
+            state.is_dragging,
+            cursor.is_over(layout.bounds()),
+        )
     }
 
     fn overlay<'b>(
@@ -1787,9 +1755,6 @@ where
     if step > 0.0 { step } else { 0.0 }
 }
 
-/// Keeps discrete tick marks far enough apart to avoid excessive drawing on
-/// long ranges while retaining every step when the track has room for them.
-
 /// The unsnapped pointer position along the slider's value axis.
 fn pointer_factor(axis: Axis, bounds: Rectangle, position: Point) -> f32 {
     factor_at(
@@ -1886,6 +1851,73 @@ fn label_text<C, F>(font: F, content: C) -> Text<C, F> {
         align_y: alignment::Vertical::Center,
         shaping: text::Shaping::Advanced,
         wrapping: text::Wrapping::Word,
+    }
+}
+
+// --- Shared size/layout helpers
+
+/// Size of the slider widget: full width/height on the main axis,
+/// fixed handle height on the cross axis.
+pub(crate) fn slider_size(
+    axis: Axis,
+    width: Length,
+    height: Length,
+    handle_height: f32,
+) -> iced::Size<Length> {
+    match axis {
+        Axis::Horizontal => iced::Size {
+            width,
+            height: Length::Fixed(handle_height),
+        },
+        Axis::Vertical => iced::Size {
+            width: Length::Fixed(handle_height),
+            height,
+        },
+    }
+}
+
+/// Layout node for the slider widget.
+pub(crate) fn slider_layout(
+    axis: Axis,
+    width: Length,
+    height: Length,
+    handle_height: f32,
+    limits: &iced::advanced::layout::Limits,
+) -> iced::advanced::layout::Node {
+    match axis {
+        Axis::Horizontal => {
+            iced::advanced::layout::atomic(limits, width, Length::Fixed(handle_height))
+        }
+        Axis::Vertical => {
+            iced::advanced::layout::atomic(limits, Length::Fixed(handle_height), height)
+        }
+    }
+}
+
+/// Shared mouse interaction for sliders.
+pub(crate) fn slider_mouse_interaction(
+    disabled: bool,
+    is_dragging: bool,
+    cursor_over: bool,
+) -> mouse::Interaction {
+    if disabled {
+        return mouse::Interaction::default();
+    }
+
+    if is_dragging {
+        if cfg!(target_os = "windows") {
+            mouse::Interaction::Pointer
+        } else {
+            mouse::Interaction::Grabbing
+        }
+    } else if cursor_over {
+        if cfg!(target_os = "windows") {
+            mouse::Interaction::Pointer
+        } else {
+            mouse::Interaction::Grab
+        }
+    } else {
+        mouse::Interaction::default()
     }
 }
 
@@ -2172,5 +2204,115 @@ where
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn snap_to_step_snaps_to_nearest_multiple() {
+        let range = 0.0..100.0;
+        assert_eq!(snap_to_step(10.0, &range, 10.0), 10.0);
+        assert_eq!(snap_to_step(14.0, &range, 10.0), 10.0);
+        assert_eq!(snap_to_step(15.0, &range, 10.0), 20.0);
+    }
+
+    #[test]
+    fn snap_to_step_clamps_to_range_bounds() {
+        let range = 0.0..100.0;
+        assert_eq!(snap_to_step(-5.0, &range, 10.0), 0.0);
+        assert_eq!(snap_to_step(105.0, &range, 10.0), 100.0);
+    }
+
+    #[test]
+    fn snap_to_step_with_offset_range() {
+        let range = 10.0..20.0;
+        assert_eq!(snap_to_step(12.0, &range, 2.0), 12.0);
+        assert_eq!(snap_to_step(13.0, &range, 2.0), 14.0);
+    }
+
+    #[test]
+    fn effective_keyboard_step_returns_step_when_positive() {
+        let range = 0.0..100.0;
+        assert_eq!(effective_keyboard_step(5.0, &range), 5.0);
+    }
+
+    #[test]
+    fn effective_keyboard_step_returns_range_fraction_when_zero() {
+        let range = 0.0..100.0;
+        assert_eq!(effective_keyboard_step(0.0, &range), 5.0);
+    }
+
+    #[test]
+    fn keyboard_step_without_shift() {
+        let range = 0.0..100.0;
+        assert_eq!(keyboard_step(5.0, None, false, &range), 5.0);
+    }
+
+    #[test]
+    fn keyboard_step_with_shift_and_no_shift_step() {
+        let range = 0.0..100.0;
+        assert_eq!(keyboard_step(5.0, None, true, &range), 50.0);
+    }
+
+    #[test]
+    fn keyboard_step_with_shift_and_shift_step() {
+        let range = 0.0..100.0;
+        assert_eq!(keyboard_step(5.0, Some(25.0), true, &range), 25.0);
+    }
+
+    #[test]
+    fn increment_moves_up_by_step() {
+        let range = 0.0..100.0;
+        assert_eq!(increment(10.0, &range, 10.0), 20.0);
+        assert_eq!(increment(95.0, &range, 10.0), 100.0);
+    }
+
+    #[test]
+    fn decrement_moves_down_by_step() {
+        let range = 0.0..100.0;
+        assert_eq!(decrement(20.0, &range, 10.0), 10.0);
+        assert_eq!(decrement(5.0, &range, 10.0), 0.0);
+    }
+
+    #[test]
+    fn value_at_center_of_track() {
+        let bounds = Rectangle {
+            x: 0.0,
+            y: 0.0,
+            width: 100.0,
+            height: 20.0,
+        };
+        let position = Point::new(50.0, 10.0);
+        let value = value_at(Axis::Horizontal, bounds, position, &(0..=100i32), 1.0);
+        assert_eq!(value, Some(50));
+    }
+
+    #[test]
+    fn value_at_start_of_track() {
+        let bounds = Rectangle {
+            x: 0.0,
+            y: 0.0,
+            width: 100.0,
+            height: 20.0,
+        };
+        let position = Point::new(0.0, 10.0);
+        let value = value_at(Axis::Horizontal, bounds, position, &(0..=100i32), 1.0);
+        assert_eq!(value, Some(0));
+    }
+
+    #[test]
+    fn value_at_end_of_track() {
+        let bounds = Rectangle {
+            x: 0.0,
+            y: 0.0,
+            width: 100.0,
+            height: 20.0,
+        };
+        let position = Point::new(100.0, 10.0);
+        let value = value_at(Axis::Horizontal, bounds, position, &(0..=100i32), 1.0);
+        assert_eq!(value, Some(100));
     }
 }
