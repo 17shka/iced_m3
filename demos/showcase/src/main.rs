@@ -102,6 +102,7 @@ enum Message {
     Menu(menu::Message),
     Badge(badges::Message),
     NavRail(::navrail::Message),
+    FontsLoaded,
 }
 
 struct State {
@@ -174,6 +175,11 @@ impl State {
             Message::Menu(msg) => self.menu_page.update(msg),
             Message::Badge(msg) => self.badge_page.update(msg),
             Message::NavRail(msg) => self.navrail_page.update(msg),
+            // Fonts are loaded asynchronously; this message exists so the app
+            // redraws (and re-measures text) once they are available. Without
+            // it the first frame, rendered before the fonts are registered,
+            // stays on screen and text is invisible on the web.
+            Message::FontsLoaded => {}
         }
         Task::none()
     }
@@ -301,7 +307,7 @@ fn main() -> iced::Result {
                 Task::batch(
                     fonts::get_fonts()
                         .into_iter()
-                        .map(|b| iced::font::load(b).discard()),
+                        .map(|b| iced::font::load(b).map(|_| Message::FontsLoaded)),
                 ),
             )
         },

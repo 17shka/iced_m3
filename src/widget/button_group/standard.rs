@@ -1,5 +1,5 @@
 //! Standard button groups organize [`Button`](crate::widget::button::Button) widgets in a row and affect the size of pressed buttons.
-use std::time::Instant;
+use iced::time::Instant;
 
 use iced::{
     Element, Length, Pixels, Point, Size, Vector,

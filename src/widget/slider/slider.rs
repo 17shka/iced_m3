@@ -1,4 +1,4 @@
-use std::{fmt::Display, mem, ops::RangeInclusive, time::Instant};
+use std::{fmt::Display, mem, ops::RangeInclusive};
 
 use iced::{
     Border, Color, Element, Event, Length, Point, Rectangle,
@@ -8,6 +8,7 @@ use iced::{
         widget::{Id, Tree, operation},
     },
     keyboard::{self, Key, key},
+    time::Instant,
     touch,
 };
 use iced_widget::core::text::{self, paragraph};

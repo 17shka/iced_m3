@@ -25,7 +25,7 @@ const ITEM_LARGE_LABEL_START_X: f32 = 28.0;
 
 pub const ICON_SIZE: f32 = 24.0;
 
-use std::time::Instant;
+use iced::time::Instant;
 
 use iced::{
     Border, Element, Event, Font, Length, Pixels, Point, Rectangle, Size,

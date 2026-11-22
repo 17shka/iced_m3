@@ -1,6 +1,6 @@
 //! The M3 shape system includes original shapes, a corner radius scale, and built-in shape morphing
 
-use std::time::Instant;
+use iced::time::Instant;
 
 use iced::{Element, Point, Size};
 use iced_widget::{

@@ -1,4 +1,4 @@
-use std::time::Instant;
+use iced::time::Instant;
 
 use iced::{
     Border, Element, Event, Font, Length, Pixels, Point, Rectangle, Size,

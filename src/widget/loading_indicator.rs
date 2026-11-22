@@ -1,11 +1,11 @@
 //! Loading indicators show the progress of a process for a short wait time
 
-use std::{
-    f32::consts::{PI, TAU},
+use std::f32::consts::{PI, TAU};
+
+use iced::{
+    Color, Element, Pixels, Point, Radians, Size, Vector,
     time::{Duration, Instant},
 };
-
-use iced::{Color, Element, Pixels, Point, Radians, Size, Vector};
 use iced_widget::{
     Canvas,
     canvas::{self, Fill},

@@ -1,6 +1,6 @@
 //! Buttons prompt most actions in a UI
 
-use std::time::Instant;
+use iced::time::Instant;
 
 use iced::{
     Color, Element, Event, Length, Padding, Pixels, Radians, Rectangle,

@@ -1,6 +1,6 @@
 mod item;
 
-use std::time::Instant;
+use iced::time::Instant;
 
 use iced::{
     Color, Element, Font, Length, Padding, Pixels, Rectangle, Size, Vector,
