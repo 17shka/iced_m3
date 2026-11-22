@@ -56,7 +56,7 @@ impl Value {
     }
 
     #[must_use]
-    // Unchecked -> Checked
+    /// Unchecked -> Checked
     pub fn toggle(self) -> Self {
         if self.is_checked() {
             Self::Unchecked
@@ -66,7 +66,7 @@ impl Value {
     }
 
     #[must_use]
-    // Unchecked -> Checked -> Indeterminate
+    /// Unchecked -> Checked -> Indeterminate
     pub fn next(self) -> Self {
         match self {
             Self::Unchecked => Self::Checked,
