@@ -1,4 +1,7 @@
-use iced::{Alignment, Element, widget::{column, row, text}};
+use iced::{
+    Alignment, Element,
+    widget::{column, row, text},
+};
 use iced_m3::theme::{Accent, ColorScheme, Theme};
 use iced_m3::widget::{Action, button, fab, fab_menu, hybrid_icon::Icon};
 

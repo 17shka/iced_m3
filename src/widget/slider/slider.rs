@@ -27,44 +27,27 @@ use crate::{
     widget::ripple::Ripple,
 };
 
-/// Which handle of a [`RangeSlider`] is interacted with.
-///
-/// The handles are identified by position: the lower one sits at the smaller
-/// value. When the handles pass each other, they swap identities and the
-/// dragged one keeps following the pointer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Thumb {
-    /// The handle at the lower value.
     Lower,
-    /// The handle at the upper value.
     Upper,
 }
 
-/// The internal state of a [`RangeSlider`].
 struct State<P: text::Paragraph> {
-    /// The dragged thumb, and whether it tracks the pointer directly yet:
-    /// `None` from the press until the first cursor move, so that the handle
-    /// glides to the pressed position instead of teleporting.
     drag: Option<(Thumb, Option<f32>)>,
-    /// The place the dragged handle chases, trailing the pointer by a small
-    /// delay. The chase mirrors itself into the chased handle's position
-    /// spring, which stays the single source the track fill and the label
-    /// follow.
+
     drag_display: f32,
     active: Thumb,
     keyboard_modifiers: keyboard::Modifiers,
     is_focused: bool,
-    /// Whether the focus was granted by the keyboard: the focus ring and the
-    /// resting value indicator are shown for keyboard focus only, pointer
-    /// focus just enables the keyboard shortcuts.
+
     keyboard_focus: bool,
     ripples: [Ripple; 2],
     lower_width_spring: SpringValue<f32>,
     upper_width_spring: SpringValue<f32>,
     lower_position_spring: SpringValue<f32>,
     upper_position_spring: SpringValue<f32>,
-    /// The remaining travel of the value indicator towards the active
-    /// handle, after the active handle has changed.
+
     label_anchor_offset_spring: SpringValue<f32>,
     label_scale_spring: SpringValue<f32>,
     focus_ring_spring: SpringValue<f32>,
@@ -123,13 +106,8 @@ impl<P: text::Paragraph> State<P> {
             || !self.style_spring.is_at_rest()
     }
 
+    // Chase cursor during continuous drag, then step all springs.
     fn step(&mut self, now: Instant, continuous_drag: bool) {
-        // In continuous mode the drag chases the pointer: the chase drives
-        // the dragged handle's position spring through itself, resetting it
-        // to the chased place every frame so the handle trails the pointer
-        // by a fixed, frame-rate-independent delay.
-        // In discrete mode the spring is allowed to step normally so the
-        // handle animates between snapped positions.
         if continuous_drag {
             if let Some((thumb, Some(target))) = self.drag {
                 let spring = match thumb {
@@ -170,20 +148,6 @@ impl<P: text::Paragraph> operation::Focusable for State<P> {
     }
 }
 
-/// A slider with two handles.
-///
-/// Range sliders react to pointer, touch and keyboard interaction: clicking
-/// the track moves the nearest handle there and starts a drag, the arrow keys
-/// move the active handle by one step while the slider is focused, and the
-/// Home, End, PageUp and PageDown keys jump to well-known values. While
-/// dragged, the handle trails the pointer slightly and settles with a soft
-/// wobble when released.
-///
-/// Either handle can be disabled, acting as a fixed bound for the other one;
-/// see [`RangeSlider::lower_enabled`] and [`RangeSlider::upper_enabled`].
-///
-/// The values snap to whole numbers by default; see [`RangeSlider::step`] and
-/// [`RangeSlider::decimal_places`].
 pub struct RangeSlider<'a, T, Message> {
     id: Option<Id>,
     range: RangeInclusive<T>,
@@ -242,8 +206,7 @@ where
         RangeSlider {
             id: None,
             range,
-            // One by default, so the values snap to whole numbers and the
-            // value indicator shows them without fractional noise
+
             step: T::from(1),
             shift_step: None,
             lower,
@@ -267,15 +230,12 @@ where
         }
     }
 
-    /// Sets the [`Id`] of the [`RangeSlider`], used by focus operations.
     #[must_use]
     pub fn id(mut self, id: impl Into<Id>) -> Self {
         self.id = Some(id.into());
         self
     }
 
-    /// Sets the message that replaces `on_change` if `Some`, disabling the
-    /// [`RangeSlider`] when `None`.
     #[must_use]
     pub fn on_change_maybe<F>(mut self, on_change: Option<F>) -> Self
     where
@@ -285,139 +245,95 @@ where
         self
     }
 
-    /// Sets the release message of the [`RangeSlider`].
-    /// This is called when the mouse is released from the slider.
-    ///
-    /// Typically, the user's interaction with the slider is finished when this message is produced.
-    /// This is useful if you need to spawn a long-running task from the slider's result, where
-    /// the default on_change message could create too many events.
     #[must_use]
     pub fn on_release(mut self, on_release: Message) -> Self {
         self.on_release = Some(on_release);
         self
     }
 
-    /// Sets the width of the [`RangeSlider`].
     #[must_use]
     pub fn width(mut self, width: impl Into<Length>) -> Self {
         self.width = width.into();
         self
     }
 
-    /// Sets the height of a vertical [`RangeSlider`].
     #[must_use]
     pub fn height(mut self, height: impl Into<Length>) -> Self {
         self.height = height.into();
         self
     }
 
-    /// Sets the step size of the [`RangeSlider`].
-    ///
-    /// The values snap to multiples of the step. A step of zero makes the
-    /// [`RangeSlider`] continuous.
-    ///
-    /// Defaults to 1.
     #[must_use]
     pub fn step(mut self, step: impl Into<T>) -> Self {
         self.step = step.into();
         self
     }
 
-    /// Sets the optional "shift" step for the [`RangeSlider`].
-    ///
-    /// If set, this value is used as the step while the shift key is pressed.
     #[must_use]
     pub fn shift_step(mut self, shift_step: impl Into<T>) -> Self {
         self.shift_step = Some(shift_step.into());
         self
     }
 
-    /// Sets the minimum separation between the two handles, in value units.
-    ///
-    /// If set, the handles cannot come closer to each other than this and
-    /// cannot pass each other.
     #[must_use]
     pub fn min_separation(mut self, min_separation: impl Into<T>) -> Self {
         self.min_separation = Some(min_separation.into());
         self
     }
 
-    /// Sets whether the lower handle is enabled.
-    ///
-    /// A disabled handle keeps its value and cannot be grabbed, hovered,
-    /// moved or focused: it acts as a fixed bound that the other handle
-    /// cannot pass.
     #[must_use]
     pub fn lower_enabled(mut self, enabled: bool) -> Self {
         self.lower_enabled = enabled;
         self
     }
 
-    /// Sets whether the upper handle is enabled.
-    ///
-    /// A disabled handle keeps its value and cannot be grabbed, hovered,
-    /// moved or focused: it acts as a fixed bound that the other handle
-    /// cannot pass.
     #[must_use]
     pub fn upper_enabled(mut self, enabled: bool) -> Self {
         self.upper_enabled = enabled;
         self
     }
 
-    /// Sets the size of the [`RangeSlider`].
     #[must_use]
     pub fn size(mut self, size: Size) -> Self {
         self.size = size;
         self
     }
 
-    /// Sets the orientation of the [`RangeSlider`].
     #[must_use]
     pub fn axis(mut self, axis: Axis) -> Self {
         self.axis = axis;
         self
     }
 
-    /// Makes the [`RangeSlider`] vertical.
     #[must_use]
     pub fn vertical(self) -> Self {
         self.axis(Axis::Vertical)
     }
 
-    /// Sets whether the stop indicators along the track are drawn.
     #[must_use]
     pub fn stops(mut self, stops: bool) -> Self {
         self.stops = stops;
         self
     }
 
-    /// Draws the given number of evenly spaced tick marks along the track,
-    /// without snapping the value to them.
     #[must_use]
     pub fn continuous_tick_count(mut self, count: u32) -> Self {
         self.continuous_tick_count = Some(count);
         self
     }
 
-    /// Sets how the value indicator of the active handle is shown while it is
-    /// dragged, hovered or focused.
     #[must_use]
     pub fn value_indicator(mut self, value_indicator: ValueIndicator<'a, T>) -> Self {
         self.value_indicator = value_indicator;
         self
     }
 
-    /// Sets how many digits after the decimal point [`ValueIndicator::Value`]
-    /// shows, rounding the excess away and trimming trailing zeros.
-    ///
-    /// Defaults to 1.
     #[must_use]
     pub fn decimal_places(mut self, decimal_places: usize) -> Self {
         self.decimal_places = decimal_places;
         self
     }
 
-    /// Sets the motion scheme used by the [`RangeSlider`].
     #[must_use]
     pub fn motion_scheme(mut self, scheme: motion::Scheme) -> Self {
         self.effects_spring = Some(fast_effects(scheme));
@@ -425,14 +341,12 @@ where
         self
     }
 
-    /// Sets the spring used for effects, like the value indicator.
     #[must_use]
     pub fn effects_spring(mut self, spring: Spring) -> Self {
         self.effects_spring = Some(spring);
         self
     }
 
-    /// Sets the spring used for spatial motion, like the handles.
     #[must_use]
     pub fn spatial_spring(mut self, spring: Spring) -> Self {
         self.spatial_spring = Some(spring);
@@ -441,8 +355,6 @@ where
 }
 
 impl<T, Message> RangeSlider<'_, T, Message> {
-    /// Whether a handle responds to interaction: the slider has an
-    /// `on_change` handler and the handle is enabled.
     fn enabled_of(&self, thumb: Thumb) -> bool {
         self.on_change.is_some()
             && match thumb {
@@ -451,8 +363,6 @@ impl<T, Message> RangeSlider<'_, T, Message> {
             }
     }
 
-    /// Whether the slider as a whole responds to interaction: it has an
-    /// `on_change` handler and at least one enabled handle.
     fn is_enabled(&self) -> bool {
         self.enabled_of(Thumb::Lower) || self.enabled_of(Thumb::Upper)
     }
@@ -485,12 +395,6 @@ impl<T, Message> RangeSlider<'_, T, Message>
 where
     T: Copy + Into<f64> + PartialOrd + num_traits::FromPrimitive,
 {
-    /// Moves a handle to a value, keeping the pair sorted and separated.
-    ///
-    /// Returns the handle the value ended up on: when a handle crosses the
-    /// other one, the pair flips and the moved handle changes identity. A
-    /// disabled handle is an immovable bound: the other handle cannot pass
-    /// it and it never moves itself.
     fn move_thumb(&mut self, thumb: Thumb, value: T) -> Thumb {
         if !self.enabled_of(thumb) {
             return thumb;
@@ -507,9 +411,6 @@ where
             .min(full_range.end - full_range.start)
             .max(0.0);
 
-        // Without a minimum separation the handles can pass each other, which
-        // flips the moved handle to the other end of the pair. A disabled
-        // handle cannot be passed, so the pair never flips over it.
         let (new_lower, new_upper, thumb) = match thumb {
             Thumb::Lower if separation <= 0.0 && self.upper_enabled && value >= upper => {
                 (upper, value, Thumb::Upper)
@@ -598,12 +499,10 @@ where
     fn diff(&self, tree: &mut Tree) {
         let state = tree.state.downcast_mut::<State<Renderer::Paragraph>>();
 
-        // Stop dragging if the slider becomes disabled
         if !self.is_enabled() {
             state.drag = None;
         }
 
-        // A disabled handle cannot stay active or stay dragged
         for thumb in [Thumb::Lower, Thumb::Upper] {
             if !self.enabled_of(thumb) {
                 if state.active == thumb {
@@ -616,6 +515,19 @@ where
                     state.drag = None;
                 }
             }
+        }
+
+        // Sync handle positions with current values when not dragging.
+        // This ensures the visual position reflects the value even when
+        // the widget is rebuilt between events (e.g., via view()).
+        if state.drag.is_none() {
+            let now = Instant::now();
+            state
+                .lower_position_spring
+                .set_target(value_factor(self.lower, &self.range), now);
+            state
+                .upper_position_spring
+                .set_target(value_factor(self.upper, &self.range), now);
         }
     }
 
@@ -665,11 +577,9 @@ where
         let enabled = self.is_enabled();
         let now = Instant::now();
         let len = main_len(self.axis, bounds);
-        // Remember which handle was active at entry, so the value indicator
-        // can travel when the active handle changes below.
+
         let active_at_entry = state.active;
 
-        // --- Ripples on the handle state layers
         let lower_circle = handle_circle(
             self.axis,
             bounds,
@@ -691,8 +601,6 @@ where
             ),
         );
 
-        // While dragging, keep the state layer hovered even if the pointer
-        // leaves the handle.
         let [lower_ripple, upper_ripple] = &mut state.ripples;
         for (ripple, circle, thumb, thumb_enabled) in [
             (
@@ -736,7 +644,6 @@ where
             state.set_spatial_spring(spatial_spring);
         }
 
-        // --- Continuous vs discrete drag mode
         let axis = self.axis;
         let range = self.range.clone();
         let range_step = effective_step(self.step);
@@ -748,7 +655,6 @@ where
         };
         let continuous_drag = pixels_per_step < 12.0;
 
-        // --- Springs
         let resolved_style = if enabled {
             self.style
         } else {
@@ -763,9 +669,7 @@ where
 
         let lower_target = value_factor(self.lower, &self.range);
         let upper_target = value_factor(self.upper, &self.range);
-        // While dragging, `State::step` pins the chased handle's spring;
-        // otherwise each handle glides to its value. In discrete mode
-        // the target stays current so the spring steps normally.
+
         if !matches!(state.drag, Some((Thumb::Lower, Some(_)))) || !continuous_drag {
             state.lower_position_spring.set_target(lower_target, now);
         }
@@ -787,8 +691,6 @@ where
             now,
         );
 
-        // Label visibility for the entry active handle (decides whether the
-        // value indicator travels when the active handle changes).
         let active_circle_at_entry = match active_at_entry {
             Thumb::Lower => lower_circle,
             Thumb::Upper => upper_circle,
@@ -800,7 +702,6 @@ where
             && enabled
             && (state.drag.is_some() || cursor_over_active_at_entry || state.keyboard_focus);
 
-        // Hovered handle becomes active
         if state.drag.is_none() && cursor.is_over(bounds) {
             let lower_hit = self.enabled_of(Thumb::Lower) && cursor.is_over(lower_circle);
             let upper_hit = self.enabled_of(Thumb::Upper) && cursor.is_over(upper_circle);
@@ -809,7 +710,6 @@ where
                 (true, false) => state.active = Thumb::Lower,
                 (false, true) => state.active = Thumb::Upper,
                 (true, true) => {
-                    // Circles overlap: pick the nearer handle center.
                     let cursor_pos =
                         cursor_main(self.axis, bounds, cursor.position().unwrap_or_default());
                     let lower_center = center_at(
@@ -840,11 +740,10 @@ where
             .focus_ring_spring
             .set_target((state.keyboard_focus && enabled) as u32 as f32, now);
 
-        // --- Value indicator content
         let label_content = self.format_value(state.active).unwrap_or_default();
         if state.label_content != label_content {
             state.label_content = label_content;
-            // Re-measure the paragraph when label content changes.
+
             let _ = state.label_paragraph.update(label_text(
                 renderer.default_font(),
                 state.label_content.as_str(),
@@ -857,10 +756,9 @@ where
         if state.is_animating() || drag_is_chasing {
             shell.request_redraw();
         }
-        // step() must run every frame to keep springs animating.
+
         state.step(now, continuous_drag);
 
-        // --- Interaction
         let locate = move |position: Point| -> Option<T> {
             value_at(axis, bounds, position, &range, range_step)
         };
@@ -882,11 +780,9 @@ where
                         state.is_focused = true;
                         shell.request_redraw();
                     }
-                    // Pointer focus enables the keyboard shortcuts, but hides
-                    // the keyboard-only focus ring and resting value indicator
+
                     state.keyboard_focus = false;
 
-                    // Grab the nearest enabled handle
                     let press_main = cursor_main(self.axis, bounds, position);
                     let lower_center = center_at(
                         len,
@@ -911,8 +807,7 @@ where
                     if let Some(new_value) = locate(position) {
                         let previous = (self.lower, self.upper);
                         state.active = self.move_thumb(thumb, new_value);
-                        // No drag factor yet: glide to pressed value instead of
-                        // teleporting; tracking starts on first move.
+
                         state.drag = Some((state.active, None));
                         publish(self, shell, previous);
                     }
@@ -926,8 +821,6 @@ where
                 if let Some((thumb, chase)) = state.drag.take() {
                     let drag_display = state.drag_display;
                     if continuous_drag && range_step > 0.0 {
-                        // Smooth fine-step mode: settle from continuous
-                        // cursor position to the snapped model value.
                         let snapped_factor = value_factor(self.value_of(thumb), &self.range) as f32;
                         let spring = state.position_spring_mut(thumb);
                         if (snapped_factor - drag_display).abs() > f32::EPSILON {
@@ -940,8 +833,6 @@ where
                             }
                         }
                     } else if continuous_drag {
-                        // Continuous slider without step: hand the chase
-                        // over as-is.
                         if let Some(target) = chase {
                             let gap = target - drag_display;
                             if gap.abs() > f32::EPSILON {
@@ -951,8 +842,6 @@ where
                             }
                         }
                     }
-                    // Discrete mode: the spring is already animating toward
-                    // the snapped value, nothing to do.
 
                     if let Some(on_release) = self.on_release.clone() {
                         shell.publish(on_release);
@@ -975,9 +864,7 @@ where
                         let previous = (self.lower, self.upper);
                         if value_changed {
                             state.active = self.move_thumb(thumb, new_value);
-                            // The handles crossed and swapped identities: swap
-                            // their springs too, so each circle keeps its own
-                            // motion instead of jerking to the other one's place.
+
                             if state.active != thumb {
                                 mem::swap(
                                     &mut state.lower_position_spring,
@@ -988,8 +875,7 @@ where
                                     &mut state.upper_width_spring,
                                 );
                             }
-                            // Keep spring target in sync for discrete mode so the handle
-                            // animates immediately instead of lagging.
+
                             if !continuous_drag {
                                 let new_target =
                                     value_factor(self.value_of(state.active), &self.range) as f32;
@@ -998,12 +884,11 @@ where
                                     .set_target(new_target, now);
                             }
                         }
-                        // Chase continues from wherever the press glide brought the handle.
+
                         if state.drag.is_some_and(|(_, factor)| factor.is_none()) {
                             state.drag_display = state.position_spring(state.active);
                         }
-                        // For pointer tracking, use the handle's current width so its
-                        // visual center stays aligned with the cursor.
+
                         let current_width = state.width_spring(state.active);
                         let continuous_factor =
                             factor_at(len, current_width, cursor_main(axis, bounds, position));
@@ -1109,9 +994,6 @@ where
             _ => {}
         }
 
-        // Recompute label visibility for the final active handle after all
-        // events have been processed, so the target is correct for the
-        // next frame and the travel check below uses the final state.
         let active_circle = match state.active {
             Thumb::Lower => lower_circle,
             Thumb::Upper => upper_circle,
@@ -1126,8 +1008,6 @@ where
             .label_scale_spring
             .set_target(label_visible as u32 as f32, now);
 
-        // The value indicator travels to the newly active handle instead
-        // of teleporting: animate the difference along the axis.
         if state.active != active_at_entry {
             let label_should_travel = label_visible_at_entry && label_visible;
             if label_should_travel {
@@ -1144,12 +1024,11 @@ where
                 let offset = state.label_anchor_offset_spring.value();
                 let travel = match self.axis {
                     Axis::Horizontal => previous_center - current_center + offset,
-                    // Screen Y grows downward; slider coordinates grow upward.
+
                     Axis::Vertical => current_center - previous_center + offset,
                 };
                 state.label_anchor_offset_spring.reset(travel, now);
             } else {
-                // Label was hidden: appear directly at the new handle.
                 state.label_anchor_offset_spring.reset(0.0, now);
             }
         }
@@ -1183,7 +1062,6 @@ where
             Axis::Vertical => bounds.x + bounds.width / 2.0,
         };
 
-        // --- Track
         let active = Segment::new(
             lower_center + lower_width / 2.0 + HANDLE_GAP,
             upper_center - upper_width / 2.0 - HANDLE_GAP,
@@ -1240,7 +1118,6 @@ where
             );
         }
 
-        // --- Stop indicators
         if self.stops {
             let track = rect_at(
                 self.axis,
@@ -1258,7 +1135,6 @@ where
                 }
             };
 
-            // Continuous ticks are bounded by the available track length.
             if let Some(count) = self.continuous_tick_count.filter(|count| *count > 1) {
                 let stride = (count.saturating_sub(1) as f32 / (len / 8.0).floor().max(1.0))
                     .ceil()
@@ -1278,7 +1154,6 @@ where
                 }
             }
 
-            // End stop indicators on the inactive track edges
             for inactive in inactive.iter().filter_map(Segment::valid) {
                 if inactive.start <= 0.0
                     && inactive.end - inactive.start > STOP_INDICATOR_MIN_SEGMENT
@@ -1318,9 +1193,6 @@ where
             }
         }
 
-        // --- Handles
-        // When handles overlap, the inactive one gets an outline to stay
-        // visible on top.
         let overlap =
             (upper_center - lower_center).abs() <= (lower_width + upper_width) / 2.0 + f32::EPSILON;
         let lower = handle_rect(
@@ -1399,7 +1271,7 @@ where
     ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
         let state = tree.state.downcast_ref::<State<Renderer::Paragraph>>();
         let enabled = self.is_enabled();
-        // Shift bounds by the scrollable translation.
+
         let widget_bounds = layout.bounds();
         let bounds = Rectangle {
             x: widget_bounds.x + translation.x,
@@ -1451,7 +1323,6 @@ where
             });
         }
 
-        // The focus ring and the value indicator follow the active handle
         let active_circle = match state.active {
             Thumb::Lower => lower_circle,
             Thumb::Upper => upper_circle,
@@ -1486,7 +1357,6 @@ where
             center_at(len, state.width_spring(state.active), active_factor),
         );
         let label = (label_scale > 0.01).then(|| {
-            // While the label travels, shift it along the axis by remaining distance.
             let mut anchor = label_anchor(self.axis, &active_handle);
             let travel = state.label_anchor_offset_spring.value();
             match self.axis {

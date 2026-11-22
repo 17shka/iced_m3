@@ -1,6 +1,6 @@
 use iced::{
     Element, Font, Length, Task,
-    widget::{column, container, row, text},
+    widget::{column, container, text},
 };
 use iced_m3::theme::{ColorScheme, Mode, Theme};
 
@@ -28,25 +28,7 @@ impl Default for State {
 
 impl State {
     fn view(&self) -> Element<'_, Message> {
-        let theme_buttons = row![
-            iced_m3::widget::button(
-                iced_m3::widget::button::Style::filled(
-                    &self.theme,
-                    iced_m3::theme::Accent::Primary
-                ),
-                iced_m3::widget::button::Content::Label("Light".into()),
-            )
-            .on_press(Message::SetTheme(Mode::Light)),
-            iced_m3::widget::button(
-                iced_m3::widget::button::Style::filled(
-                    &self.theme,
-                    iced_m3::theme::Accent::Secondary
-                ),
-                iced_m3::widget::button::Content::Label("Dark".into()),
-            )
-            .on_press(Message::SetTheme(Mode::Dark)),
-        ]
-        .spacing(8);
+        let theme_buttons = common::theme_switcher(&self.theme, Message::SetTheme);
 
         container(
             column![

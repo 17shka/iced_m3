@@ -22,3 +22,4 @@ progress_indicators = { path = "../progress_indicators" }
 demo_sliders = { path = "../sliders" }
 switch = { path = "../switch" }
 shapes_demo = { path = "../shapes" }
+common = { path = "../common" }

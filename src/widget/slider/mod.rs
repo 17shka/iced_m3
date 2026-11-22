@@ -26,8 +26,6 @@ use crate::{
     widget::{hybrid_icon::Icon, ripple::Ripple},
 };
 
-// The range slider lives in its own submodule named after the widget it
-// holds; the module mirrors `slider/mod.rs` on purpose.
 #[allow(clippy::module_inception)]
 pub mod slider;
 pub use slider::RangeSlider;
@@ -35,14 +33,12 @@ pub use slider::RangeSlider;
 const HANDLE_WIDTH_IDLE: f32 = 4.0;
 const HANDLE_WIDTH_DRAGGED: f32 = 2.0;
 const HANDLE_GAP: f32 = 6.0;
-/// The outline around the inactive handle of a range slider when both
-/// handles overlap.
+
 const HANDLE_OVERLAP_WIDTH: f32 = 2.0;
 const INNER_CORNER_RADIUS: f32 = 2.0;
 const STOP_INDICATOR_SIZE: f32 = 4.0;
 const STOP_INDICATOR_TRAILING_SPACE: f32 = 4.0;
-/// The smallest stop indicator gap around a handle that still fits the
-/// trailing stop indicator.
+
 const STOP_INDICATOR_MIN_SEGMENT: f32 = 12.0;
 
 const STATE_LAYER_MIN_SIZE: f32 = 48.0;
@@ -53,20 +49,15 @@ const LABEL_MIN_HEIGHT: f32 = 32.0;
 const LABEL_HORIZONTAL_PADDING: f32 = 10.0;
 const LABEL_TEXT_SIZE: f32 = 12.0;
 const LABEL_GAP: f32 = 8.0;
-/// Value indicator text fades in during the last part of the scale animation.
+
 const LABEL_TEXT_FADE_START: f32 = 0.85;
 
 const DISABLED_ACTIVE_OPACITY: f32 = 0.38;
 const DISABLED_INACTIVE_OPACITY: f32 = 0.12;
 const DISABLED_INDICATOR_OPACITY: f32 = 0.38;
 
-/// The time constant, in seconds, of the exponential chase of the pointer
-/// while dragging: the handle trails by this delay, and the gap it keeps
-/// becomes the momentum the release hands over to the spatial spring.
 const DRAG_CHASE_DECAY: f32 = 0.008;
 
-/// A huge rectangle used as a viewport for text rendered from an overlay,
-/// where no natural viewport exists.
 const HUGE_VIEWPORT: Rectangle = Rectangle {
     x: -1.0e6,
     y: -1.0e6,
@@ -74,7 +65,6 @@ const HUGE_VIEWPORT: Rectangle = Rectangle {
     height: 2.0e6,
 };
 
-/// The track and handle metrics of a [`Slider`] for each Material size.
 pub struct Size {
     pub track_height: f32,
     pub handle_height: f32,
@@ -129,27 +119,16 @@ impl Default for Size {
     }
 }
 
-/// The orientation of a [`Slider`].
-///
-/// Vertical sliders have their zero value at the bottom.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Axis {
-    /// A horizontal slider, with its zero value on the left.
     #[default]
     Horizontal,
-    /// A vertical slider, with its zero value at the bottom.
     Vertical,
 }
 
-/// Whether, and how, a [`Slider`] shows a value indicator while its handle is
-/// interacted with.
 pub enum ValueIndicator<'a, T> {
-    /// The value indicator is never shown.
     None,
-    /// The value is rounded to the slider's `decimal_places` digits after
-    /// the decimal point, with trailing zeros trimmed.
     Value,
-    /// The value is formatted with the given function.
     Format(Box<dyn Fn(T) -> String + 'a>),
 }
 
@@ -170,8 +149,6 @@ impl<'a, T> ValueIndicator<'a, T> {
     }
 }
 
-/// Formats a value with the given maximum number of digits after the decimal
-/// point, trimming trailing zeros while keeping at least `min_decimal_places`.
 fn format_decimal(value: f64, decimal_places: usize, min_decimal_places: usize) -> String {
     let formatted = if value.abs() < 0.5 / 10_f64.powi(decimal_places as i32) {
         format!("{0:.1$}", 0.0, decimal_places)
@@ -214,17 +191,9 @@ fn step_decimal_places(step: f64) -> usize {
     count
 }
 
-/// An icon inset in the track of a [`Slider`].
-///
-/// The icon switches between its two variants as the active track grows past
-/// it: while it sits on the active track the `on_active` icon is drawn, once
-/// the active track recedes past it the `on_inactive` icon takes its place.
-///
-/// Inset icons are only meant for medium, large and extra-large sliders.
 pub struct InsetIcon<'a> {
-    /// The icon drawn while sitting on the active track.
     pub on_active: Icon<'a>,
-    /// The icon drawn while sitting on the inactive track.
+
     pub on_inactive: Icon<'a>,
 }
 
@@ -246,45 +215,26 @@ impl<'a> InsetIcon<'a> {
     }
 }
 
-/// The colors of a [`Slider`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Style {
-    /// The active part of the track.
     pub active_track: Color,
-    /// The inactive part of the track.
     pub inactive_track: Color,
-    /// The handle.
     pub handle: Color,
-    /// The stop indicator at the end of the track.
     pub stop_indicator: Color,
-    /// Stop indicators sitting on the active track.
     pub stop_indicators_active: Color,
-    /// Stop indicators sitting on the inactive track.
     pub stop_indicators_inactive: Color,
-    /// The container of the value indicator.
     pub label_container: Color,
-    /// The text of the value indicator.
     pub label_text: Color,
-    /// The state layer of the handle.
     pub state_layer: StateLayer,
-    /// The focus ring of the handle.
     pub focus_ring: Color,
-    /// Inset icons sitting on the active track.
     pub icon_active: Color,
-    /// Inset icons sitting on the inactive track.
     pub icon_inactive: Color,
-    /// The outline separating the handles of a [`RangeSlider`] when they
-    /// overlap.
+
     pub handle_overlap_outline: Color,
-    /// The active part of the track while disabled.
     pub active_track_disabled: Color,
-    /// The inactive part of the track while disabled.
     pub inactive_track_disabled: Color,
-    /// The handle while disabled.
     pub handle_disabled: Color,
-    /// Stop indicators while disabled.
     pub stop_indicators_disabled: Color,
-    /// Inset icons while disabled.
     pub icon_disabled: Color,
 }
 
@@ -313,8 +263,6 @@ impl Style {
         }
     }
 
-    /// The style while the slider is disabled: only the track, handle, stop
-    /// indicators and inset icons change appearance.
     pub(crate) fn disabled(self) -> Self {
         Self {
             active_track: self.active_track_disabled,
@@ -367,17 +315,13 @@ impl Interpolable for Style {
     }
 }
 
-/// The internal state of a [`Slider`].
 struct State<P: text::Paragraph> {
     is_dragging: bool,
     drag_factor: Option<f32>,
-    /// Handle position chased during drag, shown slightly behind the cursor.
-    /// The position spring reads this as its target.
-    drag_display: f32,
+
     keyboard_modifiers: keyboard::Modifiers,
     is_focused: bool,
-    /// True when focus came from the keyboard: only keyboard focus shows the
-    /// focus ring and resting value indicator.
+
     keyboard_focus: bool,
     ripple: Ripple,
     handle_width_spring: SpringValue<f32>,
@@ -418,19 +362,8 @@ impl<P: text::Paragraph> State<P> {
             || !self.style_spring.is_at_rest()
     }
 
+    // Step all animation springs by the frame delta.
     fn step(&mut self, now: Instant) {
-        // While dragging, chase the pointer: reset the position spring each
-        // frame so the handle trails the cursor by a fixed delay.
-        if self.is_dragging
-            && let Some(target) = self.drag_factor
-        {
-            let spring = &mut self.handle_position_spring;
-            let delta = now.duration_since(spring.spring.time).as_secs_f32();
-            let decay = 1.0 - (-delta / DRAG_CHASE_DECAY).exp();
-            self.drag_display += (target - self.drag_display) * decay;
-            spring.reset(self.drag_display, now);
-        }
-
         self.handle_width_spring.step(now);
         self.handle_position_spring.step(now);
         self.label_scale_spring.step(now);
@@ -457,16 +390,6 @@ impl<P: text::Paragraph> operation::Focusable for State<P> {
     }
 }
 
-/// A slider with a single handle.
-///
-/// Sliders react to pointer, touch and keyboard interaction: clicking the
-/// track moves the handle there and starts a drag, the arrow keys move it by
-/// one step while the slider is focused, and the Home, End, PageUp and
-/// PageDown keys jump to well-known values. While dragged, the handle trails
-/// the pointer slightly and settles with a soft wobble when released.
-///
-/// The value snaps to whole numbers by default; see [`Slider::step`] and
-/// [`Slider::decimal_places`].
 pub struct Slider<'a, T, Message> {
     id: Option<Id>,
     range: RangeInclusive<T>,
@@ -518,8 +441,7 @@ where
             value,
             default: None,
             range,
-            // One by default, so the values snap to whole numbers and the
-            // value indicator shows them without fractional noise
+
             step: T::from(1),
             shift_step: None,
             on_change: Some(Box::new(on_change)),
@@ -541,15 +463,12 @@ where
         }
     }
 
-    /// Sets the [`Id`] of the [`Slider`], used by focus operations.
     #[must_use]
     pub fn id(mut self, id: impl Into<Id>) -> Self {
         self.id = Some(id.into());
         self
     }
 
-    /// Sets the message that replaces `on_change` if `Some`, disabling the
-    /// [`Slider`] when `None`.
     #[must_use]
     pub fn on_change_maybe<F>(mut self, on_change: Option<F>) -> Self
     where
@@ -559,138 +478,101 @@ where
         self
     }
 
-    /// Sets the optional default value for the [`Slider`].
-    ///
-    /// If set, the [`Slider`] will reset to this value when ctrl-clicked or command-clicked.
     #[must_use]
     pub fn default(mut self, default: impl Into<T>) -> Self {
         self.default = Some(default.into());
         self
     }
 
-    /// Sets the release message of the [`Slider`].
-    /// This is called when the mouse is released from the slider.
-    ///
-    /// Typically, the user's interaction with the slider is finished when this message is produced.
-    /// This is useful if you need to spawn a long-running task from the slider's result, where
-    /// the default on_change message could create too many events.
     #[must_use]
     pub fn on_release(mut self, on_release: Message) -> Self {
         self.on_release = Some(on_release);
         self
     }
 
-    /// Sets the width of the [`Slider`].
     #[must_use]
     pub fn width(mut self, width: impl Into<Length>) -> Self {
         self.width = width.into();
         self
     }
 
-    /// Sets the height of a vertical [`Slider`].
     #[must_use]
     pub fn height(mut self, height: impl Into<Length>) -> Self {
         self.height = height.into();
         self
     }
 
-    /// Sets the step size of the [`Slider`].
-    ///
-    /// The value snaps to multiples of the step. A step of zero makes the
-    /// [`Slider`] continuous.
-    ///
-    /// Defaults to 1.
     #[must_use]
     pub fn step(mut self, step: impl Into<T>) -> Self {
         self.step = step.into();
         self
     }
 
-    /// Sets the optional "shift" step for the [`Slider`].
-    ///
-    /// If set, this value is used as the step while the shift key is pressed.
     #[must_use]
     pub fn shift_step(mut self, shift_step: impl Into<T>) -> Self {
         self.shift_step = Some(shift_step.into());
         self
     }
 
-    /// Sets the size of the [`Slider`].
     #[must_use]
     pub fn size(mut self, size: Size) -> Self {
         self.size = size;
         self
     }
 
-    /// Sets the orientation of the [`Slider`].
     #[must_use]
     pub fn axis(mut self, axis: Axis) -> Self {
         self.axis = axis;
         self
     }
 
-    /// Makes the [`Slider`] vertical.
     #[must_use]
     pub fn vertical(self) -> Self {
         self.axis(Axis::Vertical)
     }
 
-    /// Makes the [`Slider`] grow its active track from the middle of the
-    /// range instead of its start, like a balance control.
     #[must_use]
     pub fn centered(mut self, centered: bool) -> Self {
         self.centered = centered;
         self
     }
 
-    /// Sets whether the stop indicators along the track are drawn.
     #[must_use]
     pub fn stops(mut self, stops: bool) -> Self {
         self.stops = stops;
         self
     }
 
-    /// Draws the given number of evenly spaced tick marks along the track,
-    /// without snapping the value to them.
     #[must_use]
     pub fn continuous_tick_count(mut self, count: u32) -> Self {
         self.continuous_tick_count = Some(count);
         self
     }
 
-    /// Sets how the value indicator is shown while the handle is dragged,
-    /// hovered or focused.
     #[must_use]
     pub fn value_indicator(mut self, value_indicator: ValueIndicator<'a, T>) -> Self {
         self.value_indicator = value_indicator;
         self
     }
 
-    /// Sets how many digits after the decimal point [`ValueIndicator::Value`]
-    /// shows, rounding the excess away and trimming trailing zeros.
-    ///
-    /// Defaults to 1.
     #[must_use]
     pub fn decimal_places(mut self, decimal_places: usize) -> Self {
         self.decimal_places = decimal_places;
         self
     }
 
-    /// Sets the icon inset at the start of the track.
     #[must_use]
     pub fn inset_icon_start(mut self, icon: InsetIcon<'a>) -> Self {
         self.inset_icon_start = Some(icon);
         self
     }
 
-    /// Sets the icon inset at the end of the track.
     #[must_use]
     pub fn inset_icon_end(mut self, icon: InsetIcon<'a>) -> Self {
         self.inset_icon_end = Some(icon);
         self
     }
 
-    /// Sets the motion scheme used by the [`Slider`].
     #[must_use]
     pub fn motion_scheme(mut self, scheme: motion::Scheme) -> Self {
         self.effects_spring = Some(fast_effects(scheme));
@@ -698,14 +580,12 @@ where
         self
     }
 
-    /// Sets the spring used for effects, like the value indicator.
     #[must_use]
     pub fn effects_spring(mut self, spring: Spring) -> Self {
         self.effects_spring = Some(spring);
         self
     }
 
-    /// Sets the spring used for spatial motion, like the handle.
     #[must_use]
     pub fn spatial_spring(mut self, spring: Spring) -> Self {
         self.spatial_spring = Some(spring);
@@ -753,7 +633,6 @@ where
         let state: State<Renderer::Paragraph> = State {
             is_dragging: false,
             drag_factor: None,
-            drag_display: factor,
             keyboard_modifiers: keyboard::Modifiers::default(),
             is_focused: false,
             keyboard_focus: false,
@@ -781,10 +660,18 @@ where
     fn diff(&self, tree: &mut Tree) {
         let state = tree.state.downcast_mut::<State<Renderer::Paragraph>>();
 
-        // Stop dragging if the slider becomes disabled
         if self.on_change.is_none() {
             state.is_dragging = false;
             state.drag_factor = None;
+        }
+
+        // Sync handle position with the current value.
+        // During drag the event handlers snap directly, so this
+        // is a no-op until the user stops dragging.
+        if state.drag_factor.is_none() {
+            state
+                .handle_position_spring
+                .set_target(value_factor(self.value, &self.range), Instant::now());
         }
     }
 
@@ -834,13 +721,11 @@ where
         let enabled = self.on_change.is_some();
         let now = Instant::now();
 
-        // --- Ripple on the handle state layer
         let len = main_len(self.axis, bounds);
         let handle_width = state.handle_width_spring.value();
         let handle_center = center_at(len, handle_width, state.handle_position_spring.value());
         let circle = handle_circle(self.axis, bounds, self.size.handle_height, handle_center);
-        // While dragging, keep the state layer hovered even if the pointer
-        // leaves the handle.
+
         let interaction_bounds = if state.is_dragging {
             huge_bounds(bounds)
         } else {
@@ -863,7 +748,6 @@ where
             state.set_spatial_spring(spatial_spring);
         }
 
-        // --- Springs
         let resolved_style = if enabled {
             self.style
         } else {
@@ -876,13 +760,13 @@ where
             state.style_spring.set_target(resolved_style, now);
         }
 
-        // While dragging, `State::step` pins the spring to the chase;
-        // otherwise it glides to the value.
-        if state.drag_factor.is_none() {
-            state
-                .handle_position_spring
-                .set_target(value_factor(self.value, &self.range), now);
-        }
+        // Always sync handle position spring with the current value.
+        // During drag the event handlers override this with a direct snap;
+        // for non-drag changes (keyboard, wheel, programmatic) the spring
+        // provides a smooth animation.
+        state
+            .handle_position_spring
+            .set_target(value_factor(self.value, &self.range), now);
         state.handle_width_spring.set_target(
             match state.is_dragging {
                 true => HANDLE_WIDTH_DRAGGED,
@@ -902,18 +786,15 @@ where
             .focus_ring_spring
             .set_target((state.keyboard_focus && enabled) as u32 as f32, now);
 
-        // --- Value indicator content
         let label_content = self.format_value().unwrap_or_default();
         if state.label_content != label_content {
             state.label_content = label_content;
-            // Re-measure the paragraph when the label content changes.
             state.label_paragraph.update(label_text(
                 renderer.default_font(),
                 state.label_content.as_str(),
             ));
         }
 
-        // --- Inset icon crossfades
         if self.inset_icon_start.is_some() || self.inset_icon_end.is_some() {
             let track_height = self.size.track_height;
             let active = self
@@ -938,10 +819,9 @@ where
         if state.is_animating() {
             shell.request_redraw();
         }
-        // step() must run every frame to keep springs animating.
+
         state.step(now);
 
-        // --- Interaction
         let axis = self.axis;
         let range = self.range.clone();
         let range_step = effective_step(self.step);
@@ -971,8 +851,7 @@ where
                         state.is_focused = true;
                         shell.request_redraw();
                     }
-                    // Pointer focus enables keyboard shortcuts but hides the
-                    // keyboard-only focus ring and resting value indicator.
+
                     state.keyboard_focus = false;
 
                     if state.keyboard_modifiers.command() {
@@ -980,10 +859,15 @@ where
                         state.is_dragging = false;
                         state.drag_factor = None;
                     } else if let Some(new_value) = locate(position) {
+                        // Immediately snap the handle to the clicked position.
+                        let target = value_factor(new_value, &self.range);
                         change(self, shell, new_value);
+                        state.handle_position_spring.from = target;
+                        state.handle_position_spring.to = target;
+                        state.handle_position_spring.spring.position = 1.0;
+                        state.handle_position_spring.spring.velocity = 0.0;
+
                         state.is_dragging = true;
-                        // No drag factor yet: glide to the pressed value instead of
-                        // teleporting; pointer tracking starts on first move.
                         state.drag_factor = None;
                     }
 
@@ -994,17 +878,6 @@ where
             | Event::Touch(touch::Event::FingerLifted { .. })
             | Event::Touch(touch::Event::FingerLost { .. }) => {
                 if state.is_dragging {
-                    // Hand the chase over to the spatial spring: the gap the
-                    // chase still carries turns into the momentum of a damped
-                    // settling wobble around the value.
-                    if let Some(target) = state.drag_factor {
-                        let gap = target - state.drag_display;
-                        if gap.abs() > f32::EPSILON {
-                            state.handle_position_spring.set_target(target, now);
-                            state.handle_position_spring.spring.velocity = 1.0 / DRAG_CHASE_DECAY;
-                        }
-                    }
-
                     if let Some(on_release) = self.on_release.clone() {
                         shell.publish(on_release);
                     }
@@ -1018,12 +891,15 @@ where
                     if let Some(position) = cursor.land().position()
                         && let Some(new_value) = locate(position)
                     {
+                        // During drag, snap the handle directly to the value
+                        // instead of using spring animation, so the handle
+                        // follows the cursor without lag.
+                        let target = value_factor(new_value, &self.range);
                         change(self, shell, new_value);
-                        // Chase continues from wherever the press glide brought the handle.
-                        if state.drag_factor.is_none() {
-                            state.drag_display = state.handle_position_spring.value();
-                        }
-                        state.drag_factor = Some(pointer_factor(axis, bounds, position));
+                        state.handle_position_spring.from = target;
+                        state.handle_position_spring.to = target;
+                        state.handle_position_spring.spring.position = 1.0;
+                        state.handle_position_spring.spring.velocity = 0.0;
                     }
 
                     shell.capture_event();
@@ -1137,7 +1013,6 @@ where
             Axis::Vertical => bounds.x + bounds.width / 2.0,
         };
 
-        // --- Track
         let active_range = self.active_main_range(len, handle_width, handle_center);
         let inactive_ranges = self.inactive_main_ranges(len, handle_width, handle_center);
 
@@ -1176,7 +1051,6 @@ where
             );
         }
 
-        // --- Stop indicators
         if self.stops {
             let track = rect_at(
                 self.axis,
@@ -1197,7 +1071,6 @@ where
                 }
             };
 
-            // Continuous ticks are bounded by the available track length.
             if let Some(count) = self.continuous_tick_count.filter(|count| *count > 1) {
                 let stride = (count.saturating_sub(1) as f32 / (len / 8.0).floor().max(1.0))
                     .ceil()
@@ -1217,10 +1090,8 @@ where
                 }
             }
 
-            // End stop indicators on the inactive track edges
             for inactive in inactive_ranges.iter().filter_map(Segment::valid) {
                 if inactive.start <= 0.0 {
-                    // Segment touching the start of the track
                     if inactive.end - inactive.start > STOP_INDICATOR_MIN_SEGMENT {
                         let main = STOP_INDICATOR_TRAILING_SPACE + STOP_INDICATOR_SIZE / 2.0;
                         draw_stop_indicator(
@@ -1239,7 +1110,6 @@ where
                     }
                 }
                 if inactive.end >= len {
-                    // End stop indicator
                     if inactive.end - inactive.start > STOP_INDICATOR_MIN_SEGMENT {
                         let main = len - STOP_INDICATOR_TRAILING_SPACE - STOP_INDICATOR_SIZE / 2.0;
                         draw_stop_indicator(
@@ -1260,7 +1130,6 @@ where
             }
         }
 
-        // --- Inset icons
         if self.inset_icon_start.is_some() || self.inset_icon_end.is_some() {
             let icon_size = inset_icon_size(track_height);
             let icon_color = |active: bool| -> Color {
@@ -1307,7 +1176,6 @@ where
             }
         }
 
-        // --- Handle
         let handle = handle_rect(
             self.axis,
             bounds,
@@ -1355,8 +1223,7 @@ where
     ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
         let state = tree.state.downcast_ref::<State<Renderer::Paragraph>>();
         let enabled = self.on_change.is_some();
-        // The overlay draws in window coordinates: shift the widget bounds by
-        // the translation of the enclosing scrollable, if any
+
         let widget_bounds = layout.bounds();
         let bounds = Rectangle {
             x: widget_bounds.x + translation.x,
@@ -1448,15 +1315,11 @@ where
     }
 }
 
-// --- Geometry helpers
-
-/// A segment of the track along the main axis, in pixels from the start of
-/// the track. Both ends remember whether they sit on an edge of the track, in
-/// which case they get the outer corner radius instead of the inner one.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Segment {
     pub start: f32,
     pub end: f32,
+
     start_at_edge: bool,
     end_at_edge: bool,
 }
@@ -1471,7 +1334,6 @@ impl Segment {
         }
     }
 
-    /// The segment, if it is long enough to be visible.
     fn valid(&self) -> Option<Self> {
         (self.end - self.start > 0.5).then_some(*self)
     }
@@ -1481,9 +1343,6 @@ impl Segment {
     }
 
     fn radii(&self, axis: Axis, corner_radius: f32) -> Radius {
-        // `start` is the radius at the main-start end of the segment (left for
-        // a horizontal slider, bottom for a vertical one), `end` at the
-        // main-end (right, top).
         let (start, end) = (
             if self.start_at_edge {
                 corner_radius
@@ -1518,8 +1377,6 @@ impl<T, Message> Slider<'_, T, Message>
 where
     T: Copy + Into<f64> + PartialOrd,
 {
-    /// The main-axis segment covered by the active track, in pixels from the
-    /// start of the track.
     pub(crate) fn active_main_range(
         &self,
         len: f32,
@@ -1527,8 +1384,6 @@ where
         handle_center: f32,
     ) -> Segment {
         if self.centered {
-            // The active track grows from the middle of the range towards the
-            // handle, in either direction.
             let mid = center_at(len, handle_width, 0.5);
             let (start, end) = if handle_center < mid {
                 (handle_center, mid)
@@ -1546,10 +1401,6 @@ where
         }
     }
 
-    /// The main-axis segments covered by the inactive track. For a centered
-    /// slider both sides of the middle can be inactive; otherwise only the
-    /// part past the handle is. Invalid segments are filtered out by
-    /// [`Segment::valid`].
     pub(crate) fn inactive_main_ranges(
         &self,
         len: f32,
@@ -1576,7 +1427,6 @@ where
     }
 }
 
-/// The length of the widget along its main axis.
 fn main_len(axis: Axis, bounds: Rectangle) -> f32 {
     match axis {
         Axis::Horizontal => bounds.width,
@@ -1584,22 +1434,16 @@ fn main_len(axis: Axis, bounds: Rectangle) -> f32 {
     }
 }
 
-/// The handle center, in pixels from the start of the track, for a value
-/// factor in `0..=1`.
 fn center_at(len: f32, handle_width: f32, factor: f32) -> f32 {
     let len = len.max(handle_width);
     handle_width / 2.0 + (len - handle_width) * factor.clamp(0.0, 1.0)
 }
 
-/// The value factor in `0..=1` for a handle center in pixels from the start
-/// of the track.
 fn factor_at(len: f32, handle_width: f32, center: f32) -> f32 {
     let len = len.max(handle_width + 1.0);
     ((center - handle_width / 2.0) / (len - handle_width)).clamp(0.0, 1.0)
 }
 
-/// The main-axis coordinate of a pointer position, with the zero of a
-/// vertical slider at the bottom.
 fn cursor_main(axis: Axis, bounds: Rectangle, position: Point) -> f32 {
     match axis {
         Axis::Horizontal => position.x - bounds.x,
@@ -1607,7 +1451,6 @@ fn cursor_main(axis: Axis, bounds: Rectangle, position: Point) -> f32 {
     }
 }
 
-/// A screen-space rectangle for a main-axis range and a cross-axis range.
 fn rect_at(
     axis: Axis,
     bounds: Rectangle,
@@ -1633,7 +1476,6 @@ fn rect_at(
     }
 }
 
-/// A huge rectangle covering the whole screen area around `bounds`.
 pub(crate) fn huge_bounds(bounds: Rectangle) -> Rectangle {
     Rectangle {
         x: bounds.x - 1.0e6,
@@ -1643,7 +1485,6 @@ pub(crate) fn huge_bounds(bounds: Rectangle) -> Rectangle {
     }
 }
 
-/// The screen-space rectangle of a handle.
 pub(crate) fn handle_rect(
     axis: Axis,
     bounds: Rectangle,
@@ -1664,7 +1505,6 @@ pub(crate) fn handle_rect(
     )
 }
 
-/// The state layer circle centered on the handle.
 fn handle_circle(
     axis: Axis,
     bounds: Rectangle,
@@ -1697,8 +1537,6 @@ fn inset_icon_size(track_height: f32) -> f32 {
     (track_height / 2.0).clamp(16.0, 24.0)
 }
 
-/// The anchor of the value indicator pill: its bottom center for a horizontal
-/// slider, the center of its left edge for a vertical one.
 fn label_anchor(axis: Axis, handle_rect: &Rectangle) -> Point {
     match axis {
         Axis::Horizontal => Point::new(
@@ -1711,8 +1549,6 @@ fn label_anchor(axis: Axis, handle_rect: &Rectangle) -> Point {
         ),
     }
 }
-
-// --- Value helpers
 
 fn range_f64<T>(range: &RangeInclusive<T>) -> std::ops::Range<f64>
 where
@@ -1731,7 +1567,6 @@ fn fraction_of(value: f64, range: &std::ops::Range<f64>) -> f32 {
     }
 }
 
-/// The value factor in `0..=1` of a value.
 fn value_factor<T>(value: T, range: &RangeInclusive<T>) -> f32
 where
     T: Copy + Into<f64>,
@@ -1739,14 +1574,11 @@ where
     fraction_of(value.into(), &range_f64(range))
 }
 
-/// Snaps a value to the closest multiple of the step.
 fn snap_to_step(value: f64, range: &std::ops::Range<f64>, step: f64) -> f64 {
     let steps = ((value - range.start) / step).round();
     (range.start + steps * step).clamp(range.start, range.end)
 }
 
-/// The step used to locate the pointer, in value units: the configured step,
-/// or zero for a continuous slider.
 fn effective_step<T>(step: T) -> f64
 where
     T: Copy + Into<f64>,
@@ -1755,17 +1587,6 @@ where
     if step > 0.0 { step } else { 0.0 }
 }
 
-/// The unsnapped pointer position along the slider's value axis.
-fn pointer_factor(axis: Axis, bounds: Rectangle, position: Point) -> f32 {
-    factor_at(
-        main_len(axis, bounds),
-        HANDLE_WIDTH_IDLE,
-        cursor_main(axis, bounds, position),
-    )
-}
-
-/// The step used by the keyboard and wheel: the configured step, or a
-/// fraction of the range for continuous sliders.
 fn effective_keyboard_step(step: f64, range: &std::ops::Range<f64>) -> f64 {
     if step > 0.0 {
         step
@@ -1774,8 +1595,6 @@ fn effective_keyboard_step(step: f64, range: &std::ops::Range<f64>) -> f64 {
     }
 }
 
-/// The step used by the keyboard and wheel while shift is held, matching the
-/// Material "larger interval" behavior.
 fn keyboard_step<T>(
     step: T,
     shift_step: Option<T>,
@@ -1812,7 +1631,6 @@ fn decrement(value: f64, range: &std::ops::Range<f64>, step: f64) -> f64 {
     (range.start + (steps - 1.0) * step).max(range.start)
 }
 
-/// Locates the value under a pointer position.
 fn value_at<T>(
     axis: Axis,
     bounds: Rectangle,
@@ -1854,10 +1672,6 @@ fn label_text<C, F>(font: F, content: C) -> Text<C, F> {
     }
 }
 
-// --- Shared size/layout helpers
-
-/// Size of the slider widget: full width/height on the main axis,
-/// fixed handle height on the cross axis.
 pub(crate) fn slider_size(
     axis: Axis,
     width: Length,
@@ -1876,7 +1690,6 @@ pub(crate) fn slider_size(
     }
 }
 
-/// Layout node for the slider widget.
 pub(crate) fn slider_layout(
     axis: Axis,
     width: Length,
@@ -1894,7 +1707,6 @@ pub(crate) fn slider_layout(
     }
 }
 
-/// Shared mouse interaction for sliders.
 pub(crate) fn slider_mouse_interaction(
     disabled: bool,
     is_dragging: bool,
@@ -1903,25 +1715,22 @@ pub(crate) fn slider_mouse_interaction(
     if disabled {
         return mouse::Interaction::default();
     }
-
     if is_dragging {
-        if cfg!(target_os = "windows") {
+        return if cfg!(target_os = "windows") {
             mouse::Interaction::Pointer
         } else {
             mouse::Interaction::Grabbing
-        }
-    } else if cursor_over {
-        if cfg!(target_os = "windows") {
+        };
+    }
+    if cursor_over {
+        return if cfg!(target_os = "windows") {
             mouse::Interaction::Pointer
         } else {
             mouse::Interaction::Grab
-        }
-    } else {
-        mouse::Interaction::default()
+        };
     }
+    mouse::Interaction::default()
 }
-
-// --- Shared drawing helpers
 
 fn fill_track_segment<R>(
     renderer: &mut R,
@@ -1970,7 +1779,6 @@ fn draw_stop_indicator<R>(
         cross_center - STOP_INDICATOR_SIZE / 2.0..=cross_center + STOP_INDICATOR_SIZE / 2.0,
     );
 
-    // Keep the indicator inside the rounded track
     renderer.with_layer(track, |renderer| {
         renderer.fill_quad(
             Quad {
@@ -2048,13 +1856,9 @@ fn draw_inset_icon<R>(
     crossfade(renderer, on_active, active_color, visibility);
 }
 
-// --- Overlay
-
-/// The value indicator pill shown next to the handle of a slider.
 pub(crate) struct ValueLabel {
     axis: Axis,
-    /// The bottom center of the pill for a horizontal slider, the center of
-    /// its left edge for a vertical one.
+
     anchor: Point,
     width: f32,
     height: f32,
@@ -2065,7 +1869,6 @@ pub(crate) struct ValueLabel {
 }
 
 impl ValueLabel {
-    /// The on-screen rectangle of the pill at its current scale.
     fn pill_rect(&self) -> Rectangle {
         let width = self.width * self.scale;
         let height = self.height * self.scale;
@@ -2087,8 +1890,6 @@ impl ValueLabel {
     }
 }
 
-/// The state layer, focus ring and value indicator of a slider, drawn as an
-/// overlay so they can grow past the bounds of the widget.
 pub(crate) struct RippleLayer {
     pub ripple: Ripple,
     pub layer: StateLayer,
@@ -2096,10 +1897,6 @@ pub(crate) struct RippleLayer {
     pub enabled: bool,
 }
 
-/// The ripples, focus ring and value indicator of a slider, drawn as an
-/// overlay so they can grow past the bounds of the widget.
-///
-/// A single-handle slider has one ripple layer, a range slider two.
 pub(crate) struct SliderOverlay {
     pub ripples: [Option<RippleLayer>; 2],
     pub focus_ring: Option<(Rectangle, Color)>,
@@ -2107,8 +1904,6 @@ pub(crate) struct SliderOverlay {
 }
 
 impl SliderOverlay {
-    /// The smallest rectangle covering everything the overlay draws. The
-    /// overlay node is positioned and sized by it, and clipped to it.
     fn content_bounds(&self) -> Rectangle {
         self.ripples
             .iter()

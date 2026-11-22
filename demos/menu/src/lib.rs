@@ -1,4 +1,7 @@
-use iced::{Element, widget::{column, text}};
+use iced::{
+    Element,
+    widget::{column, text},
+};
 use iced_m3::theme::{ColorScheme, Theme};
 use iced_m3::widget::{Action, hybrid_icon::Icon, menu};
 

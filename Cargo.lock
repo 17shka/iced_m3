@@ -263,6 +263,7 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 name = "badges"
 version = "0.1.0"
 dependencies = [
+ "common",
  "fonts",
  "iced",
  "iced_m3",
@@ -348,6 +349,7 @@ checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 name = "button_groups"
 version = "0.1.0"
 dependencies = [
+ "common",
  "fonts",
  "iced",
  "iced_m3",
@@ -357,6 +359,7 @@ dependencies = [
 name = "buttons"
 version = "0.1.0"
 dependencies = [
+ "common",
  "fonts",
  "iced",
  "iced_m3",
@@ -454,6 +457,7 @@ dependencies = [
 name = "card"
 version = "0.1.0"
 dependencies = [
+ "common",
  "fonts",
  "iced",
  "iced_m3",
@@ -487,6 +491,7 @@ checksum = "f079e83a288787bcd14a6aea84cee5c87a67c5a3e660c30f557a3d24761b3527"
 name = "checkbox"
 version = "0.1.0"
 dependencies = [
+ "common",
  "fonts",
  "iced",
  "iced_m3",
@@ -556,6 +561,14 @@ checksum = "4356eba6976435498d05a311ee9fc486da3bc81c200d3f0d7dd9703b41913f92"
 dependencies = [
  "bytes",
  "memchr",
+]
+
+[[package]]
+name = "common"
+version = "0.1.0"
+dependencies = [
+ "iced",
+ "iced_m3",
 ]
 
 [[package]]
@@ -720,6 +733,7 @@ checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 name = "demo_sliders"
 version = "0.1.0"
 dependencies = [
+ "common",
  "fonts",
  "iced",
  "iced_m3",
@@ -738,6 +752,7 @@ dependencies = [
 name = "dialog"
 version = "0.1.0"
 dependencies = [
+ "common",
  "fonts",
  "iced",
  "iced_m3",
@@ -887,6 +902,7 @@ dependencies = [
 name = "fab"
 version = "0.1.0"
 dependencies = [
+ "common",
  "fonts",
  "iced",
  "iced_m3",
@@ -1573,6 +1589,7 @@ dependencies = [
 name = "inputs"
 version = "0.1.0"
 dependencies = [
+ "common",
  "fonts",
  "iced",
  "iced_m3",
@@ -1766,6 +1783,7 @@ checksum = "4744e383959f0db86ede514b809b1c53251889093803c05267acc7d4e7030d70"
 name = "loading_indicator"
 version = "0.1.0"
 dependencies = [
+ "common",
  "fonts",
  "iced",
  "iced_m3",
@@ -1881,6 +1899,7 @@ dependencies = [
 name = "menu_demo"
 version = "0.1.0"
 dependencies = [
+ "common",
  "fonts",
  "iced",
  "iced_m3",
@@ -1976,6 +1995,7 @@ dependencies = [
 name = "navbar_demo"
 version = "0.1.0"
 dependencies = [
+ "common",
  "fonts",
  "iced",
  "iced_m3",
@@ -1985,6 +2005,7 @@ dependencies = [
 name = "navrail"
 version = "0.1.0"
 dependencies = [
+ "common",
  "fonts",
  "iced",
  "iced_m3",
@@ -2684,6 +2705,7 @@ checksum = "3d595e54a326bc53c1c197b32d295e14b169e3cfeaa8dc82b529f947fba6bcf5"
 name = "progress_indicators"
 version = "0.1.0"
 dependencies = [
+ "common",
  "fonts",
  "iced",
  "iced_m3",
@@ -3012,6 +3034,7 @@ dependencies = [
  "buttons",
  "card",
  "checkbox",
+ "common",
  "demo_sliders",
  "dialog",
  "fab",
@@ -3273,6 +3296,7 @@ dependencies = [
 name = "switch"
 version = "0.1.0"
 dependencies = [
+ "common",
  "fonts",
  "iced",
  "iced_m3",

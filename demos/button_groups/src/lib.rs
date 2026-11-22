@@ -1,4 +1,7 @@
-use iced::{Element, widget::{column, text}};
+use iced::{
+    Element,
+    widget::{column, text},
+};
 use iced_m3::theme::{Accent, ColorScheme, Theme};
 use iced_m3::widget::{button, button_group, connected_button_group, standard_button_group};
 
@@ -26,9 +29,7 @@ impl Page {
     pub fn update(&mut self, message: Message) {
         match message {
             Message::SelectIndex(index) => self.selected = index,
-            Message::ToggleButton(index) => {
-                self.buttons[index] = !self.buttons[index]
-            }
+            Message::ToggleButton(index) => self.buttons[index] = !self.buttons[index],
         }
     }
 

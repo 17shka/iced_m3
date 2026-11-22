@@ -5,7 +5,7 @@ use iced::{
 };
 use iced_m3::{
     theme::{ColorScheme, Mode, Theme},
-    widget::{hybrid_icon::Icon, navrail, scrollable, switch},
+    widget::{hybrid_icon::Icon, navrail, scrollable},
 };
 use menu_demo as menu;
 use navbar_demo as navbar;
@@ -84,7 +84,7 @@ impl Tab {
 #[derive(Clone)]
 enum Message {
     SwitchTab(Tab),
-    ToggleDarkTheme,
+    SetTheme(Mode),
     ToggleNavRailExpanded,
     Buttons(buttons::Message),
     Inputs(inputs::Message),
@@ -156,12 +156,7 @@ impl State {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::SwitchTab(tab) => self.tab = tab,
-            Message::ToggleDarkTheme => {
-                self.theme = Theme::default(match self.theme.mode {
-                    Mode::Dark => Mode::Light,
-                    Mode::Light => Mode::Dark,
-                });
-            }
+            Message::SetTheme(mode) => self.theme.mode = mode,
             Message::ToggleNavRailExpanded => self.navrail_expanded = !self.navrail_expanded,
             Message::Buttons(msg) => self.buttons_page.update(msg),
             Message::Inputs(msg) => self.inputs_page.update(msg),
@@ -237,13 +232,7 @@ impl State {
                 .size(24.0)
                 .color(self.theme.on_surface()),
             Space::new().width(Length::Fill),
-            row![
-                text("Dark").color(self.theme.on_surface()).size(14.0),
-                switch(&self.theme, self.theme.mode == Mode::Dark)
-                    .on_toggle(Message::ToggleDarkTheme),
-            ]
-            .spacing(8)
-            .align_y(Alignment::Center),
+            common::theme_switcher(&self.theme, Message::SetTheme)
         ]
         .align_y(Alignment::Center);
 

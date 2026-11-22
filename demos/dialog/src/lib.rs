@@ -1,4 +1,7 @@
-use iced::{Element, Length, widget::{column, text, Space}};
+use iced::{
+    Element, Length,
+    widget::{Space, column, text},
+};
 use iced_m3::theme::{Accent, ColorScheme, Theme};
 use iced_m3::widget::{button, dialog};
 
@@ -42,8 +45,7 @@ impl Page {
         let dialog_element = if self.dialog_open {
             dialog::Dialog::new(
                 dialog::Style::new(theme),
-                text("This is a simple dialog with standard actions.")
-                    .color(theme.on_surface()),
+                text("This is a simple dialog with standard actions.").color(theme.on_surface()),
                 vec![
                     dialog::Button {
                         on_press: Some(Message::CloseDialog),
