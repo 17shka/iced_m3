@@ -24,6 +24,7 @@ pub enum Message {
     RangeSeparated(f32, f32),
     RangeOneHandle(f32, f32),
     Vertical(f32),
+    VerticalRange(f32, f32),
     Disabled,
 }
 
@@ -45,6 +46,7 @@ pub struct Page {
     range_separated: (f32, f32),
     range_one_handle: (f32, f32),
     vertical: f32,
+    vertical_range: (f32, f32),
 }
 
 impl Default for Page {
@@ -67,6 +69,7 @@ impl Default for Page {
             range_separated: (20.0, 70.0),
             range_one_handle: (20.0, 60.0),
             vertical: 40.0,
+            vertical_range: (30.0, 80.0),
         }
     }
 }
@@ -91,6 +94,7 @@ impl Page {
             Message::RangeSeparated(start, end) => self.range_separated = (start, end),
             Message::RangeOneHandle(start, end) => self.range_one_handle = (start, end),
             Message::Vertical(v) => self.vertical = v,
+            Message::VerticalRange(start, end) => self.vertical_range = (start, end),
             Message::Disabled => {}
         }
     }
@@ -247,9 +251,9 @@ impl Page {
                 .value_indicator(slider::ValueIndicator::Value),
             range_slider(
                 0.0..=100.0,
-                self.range.0,
-                self.range.1,
-                Message::Range,
+                self.vertical_range.0,
+                self.vertical_range.1,
+                Message::VerticalRange,
                 style
             )
             .vertical()

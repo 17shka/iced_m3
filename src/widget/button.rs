@@ -295,12 +295,12 @@ impl Style {
         }
     }
 
-    pub fn outlined(theme: &(impl ColorScheme + ?Sized)) -> Self {
+    pub fn outlined(theme: &(impl ColorScheme + ?Sized), accent: Accent) -> Self {
         Self {
             regular: StateStyle {
                 container: Color::TRANSPARENT,
-                label: theme.on_surface_variant(),
-                icon: theme.on_surface_variant(),
+                label: accent.color(theme),
+                icon: accent.color(theme),
                 outline: Outline {
                     width: 1.0,
                     color: theme.outline_variant(),
@@ -316,9 +316,9 @@ impl Style {
                 },
             },
             selected: StateStyle {
-                container: theme.inverse_surface(),
-                label: theme.inverse_on_surface(),
-                icon: theme.inverse_on_surface(),
+                container: accent.color(theme),
+                label: accent.on_color(theme),
+                icon: accent.on_color(theme),
                 outline: Outline {
                     width: 1.0,
                     color: theme.outline_variant(),
@@ -352,9 +352,9 @@ impl Style {
                 },
             },
             elevation: ElevationStates::new(theme.shadow()),
-            state_layer: StateLayer::new(theme.on_surface_variant()),
+            state_layer: StateLayer::new(accent.color(theme)),
             state_layer_unselected: StateLayer::new(theme.on_surface_variant()),
-            state_layer_selected: StateLayer::new(theme.inverse_on_surface()),
+            state_layer_selected: StateLayer::new(accent.on_color(theme)),
         }
     }
 

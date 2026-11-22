@@ -87,9 +87,12 @@ impl Page {
             .spacing(8),
             section_header("Outlined buttons", theme),
             row![
-                btn(button::Style::outlined(theme), "Primary"),
-                btn(button::Style::outlined(theme), "Secondary"),
-                btn(button::Style::outlined(theme), "Tertiary"),
+                btn(button::Style::outlined(theme, Accent::Primary), "Primary"),
+                btn(
+                    button::Style::outlined(theme, Accent::Secondary),
+                    "Secondary"
+                ),
+                btn(button::Style::outlined(theme, Accent::Tertiary), "Tertiary"),
             ]
             .spacing(8),
             section_header("Text buttons", theme),
@@ -110,7 +113,7 @@ impl Page {
                     button::Content::Label("Elevated".into())
                 ),
                 iced_m3::widget::button(
-                    button::Style::outlined(theme),
+                    button::Style::outlined(theme, Accent::Primary),
                     button::Content::Label("Outlined".into())
                 ),
                 iced_m3::widget::button(
@@ -129,7 +132,10 @@ impl Page {
                     button::Style::elevated(theme, Accent::Primary),
                     add_icon.clone()
                 ),
-                icon_btn(button::Style::outlined(theme), add_icon.clone()),
+                icon_btn(
+                    button::Style::outlined(theme, Accent::Primary),
+                    add_icon.clone()
+                ),
                 icon_btn(
                     button::Style::text(theme, Accent::Primary),
                     add_icon.clone()
@@ -148,19 +154,25 @@ impl Page {
                     "Add",
                     add_icon.clone()
                 ),
-                full_btn(button::Style::outlined(theme), "Add", add_icon.clone()),
+                full_btn(
+                    button::Style::outlined(theme, Accent::Primary),
+                    "Add",
+                    add_icon.clone()
+                ),
                 full_btn(button::Style::text(theme, Accent::Primary), "Add", add_icon),
             ]
             .spacing(8),
             section_header("Button sizes", theme),
             row![
-                btn(button::Style::filled(theme, Accent::Primary), "XS")
+                btn(button::Style::filled(theme, Accent::Primary), "Extra Small")
                     .size(button::Size::extra_small()),
-                btn(button::Style::filled(theme, Accent::Primary), "S").size(button::Size::small()),
-                btn(button::Style::filled(theme, Accent::Primary), "M")
+                btn(button::Style::filled(theme, Accent::Primary), "Small")
+                    .size(button::Size::small()),
+                btn(button::Style::filled(theme, Accent::Primary), "Medium")
                     .size(button::Size::medium()),
-                btn(button::Style::filled(theme, Accent::Primary), "L").size(button::Size::large()),
-                btn(button::Style::filled(theme, Accent::Primary), "XL")
+                btn(button::Style::filled(theme, Accent::Primary), "Large")
+                    .size(button::Size::large()),
+                btn(button::Style::filled(theme, Accent::Primary), "Extra Large")
                     .size(button::Size::extra_large()),
             ]
             .spacing(8),
@@ -170,7 +182,7 @@ impl Page {
                     if self.button_selected {
                         button::Style::filled(theme, Accent::Primary)
                     } else {
-                        button::Style::outlined(theme)
+                        button::Style::outlined(theme, Accent::Primary)
                     },
                     button::Content::Label("Toggle selection".into()),
                 )
