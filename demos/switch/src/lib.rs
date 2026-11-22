@@ -10,32 +10,73 @@ use iced_m3::{
 
 #[derive(Clone)]
 pub enum Message {
-    Toggle1,
-    Toggle2,
+    ToggleDemo,
+    ToggleNever,
+    ToggleWhenSelected,
+    ToggleAlways,
     SetIconMode(IconMode),
 }
 
 pub struct Demo {
-    toggled1: bool,
-    toggled2: bool,
+    toggled_demo: bool,
+    toggled_never: bool,
+    toggled_when_selected: bool,
+    toggled_always: bool,
     icon_mode: IconMode,
 }
 
 impl Default for Demo {
     fn default() -> Self {
         Self {
-            toggled1: false,
-            toggled2: false,
+            toggled_demo: false,
+            toggled_never: false,
+            toggled_when_selected: false,
+            toggled_always: false,
             icon_mode: IconMode::default(),
         }
     }
 }
 
+fn label<'a>(content: &'a str, theme: &Theme) -> text::Text<'a> {
+    text::Text::new(content)
+        .font(fonts::text_regular())
+        .size(16.0)
+        .color(theme.on_surface())
+}
+
+fn section_header<'a>(content: &'a str, theme: &Theme) -> text::Text<'a> {
+    text::Text::new(content)
+        .font(fonts::text_bold())
+        .size(18.0)
+        .color(theme.on_surface())
+}
+
+fn switch_row<'a>(
+    theme: &Theme,
+    label_text: &'a str,
+    toggled: bool,
+    icon_mode: IconMode,
+    on_toggle: Option<Message>,
+) -> Element<'a, Message> {
+    let s = widget::switch(theme, toggled).icon_mode(icon_mode);
+    let s = if let Some(msg) = on_toggle {
+        s.on_toggle(msg)
+    } else {
+        s
+    };
+    row![label(label_text, theme), s]
+        .spacing(12)
+        .align_y(Alignment::Center)
+        .into()
+}
+
 impl Demo {
     pub fn update(&mut self, message: Message) {
         match message {
-            Message::Toggle1 => self.toggled1 = !self.toggled1,
-            Message::Toggle2 => self.toggled2 = !self.toggled2,
+            Message::ToggleDemo => self.toggled_demo = !self.toggled_demo,
+            Message::ToggleNever => self.toggled_never = !self.toggled_never,
+            Message::ToggleWhenSelected => self.toggled_when_selected = !self.toggled_when_selected,
+            Message::ToggleAlways => self.toggled_always = !self.toggled_always,
             Message::SetIconMode(icon_mode) => self.icon_mode = icon_mode,
         }
     }
@@ -45,61 +86,108 @@ impl Demo {
     }
 
     pub fn view(&self, theme: &Theme) -> Element<'_, Message> {
-        column![
+        let dynamic_section = column![
+            section_header("Dynamic Icon Mode", theme),
             row![
-                text("With expressive animation").color(theme.on_surface()),
-                widget::switch(theme, self.toggled1)
+                label("Interactive switch", theme),
+                widget::switch(theme, self.toggled_demo)
                     .motion_scheme(motion::Scheme::Expressive)
                     .icon_mode(self.icon_mode)
-                    .on_toggle(Message::Toggle1)
+                    .on_toggle(Message::ToggleDemo),
             ]
-            .spacing(8)
+            .spacing(12)
             .align_y(Alignment::Center),
             row![
-                text("With standard animation").color(theme.on_surface()),
-                widget::switch(theme, self.toggled2)
-                    .motion_scheme(motion::Scheme::Standard)
-                    .icon_mode(self.icon_mode)
-                    .on_toggle(Message::Toggle2)
-            ]
-            .spacing(8)
-            .align_y(Alignment::Center),
-            row![
-                text("Disabled selected").color(theme.on_surface()),
-                widget::switch(theme, true).icon_mode(self.icon_mode),
-            ]
-            .spacing(8)
-            .align_y(Alignment::Center),
-            row![
-                text("Disabled unselected").color(theme.on_surface()),
-                widget::switch(theme, false).icon_mode(self.icon_mode),
-            ]
-            .spacing(8)
-            .align_y(Alignment::Center),
-            column![
-                text("Icon mode").color(theme.on_surface()),
-                row![
-                    widget::button(
-                        button::Style::filled(theme, iced_m3::theme::Accent::default()),
-                        button::Content::Label("Never".into()),
-                    )
-                    .on_press(Message::SetIconMode(IconMode::Never)),
-                    widget::button(
-                        button::Style::filled(theme, iced_m3::theme::Accent::default()),
-                        button::Content::Label("When Selected".into()),
-                    )
-                    .on_press(Message::SetIconMode(IconMode::WhenSelected)),
-                    widget::button(
-                        button::Style::filled(theme, iced_m3::theme::Accent::default()),
-                        button::Content::Label("Always".into()),
-                    )
-                    .on_press(Message::SetIconMode(IconMode::Always))
-                ]
-                .spacing(8)
+                widget::button(
+                    button::Style::filled(theme, iced_m3::theme::Accent::default()),
+                    button::Content::Label("Never".into()),
+                )
+                .on_press(Message::SetIconMode(IconMode::Never)),
+                widget::button(
+                    button::Style::filled(theme, iced_m3::theme::Accent::default()),
+                    button::Content::Label("When Selected".into()),
+                )
+                .on_press(Message::SetIconMode(IconMode::WhenSelected)),
+                widget::button(
+                    button::Style::filled(theme, iced_m3::theme::Accent::default()),
+                    button::Content::Label("Always".into()),
+                )
+                .on_press(Message::SetIconMode(IconMode::Always))
             ]
             .spacing(8)
         ]
-        .spacing(20.0)
+        .spacing(12);
+
+        let never_section = column![
+            section_header("IconMode::Never", theme),
+            switch_row(
+                theme,
+                "On",
+                self.toggled_never,
+                IconMode::Never,
+                Some(Message::ToggleNever)
+            ),
+            switch_row(
+                theme,
+                "Off",
+                !self.toggled_never,
+                IconMode::Never,
+                Some(Message::ToggleNever)
+            ),
+            switch_row(theme, "Disabled on", true, IconMode::Never, None),
+            switch_row(theme, "Disabled off", false, IconMode::Never, None),
+        ]
+        .spacing(12);
+
+        let when_selected_section = column![
+            section_header("IconMode::WhenSelected", theme),
+            switch_row(
+                theme,
+                "On",
+                self.toggled_when_selected,
+                IconMode::WhenSelected,
+                Some(Message::ToggleWhenSelected)
+            ),
+            switch_row(
+                theme,
+                "Off",
+                !self.toggled_when_selected,
+                IconMode::WhenSelected,
+                Some(Message::ToggleWhenSelected)
+            ),
+            switch_row(theme, "Disabled on", true, IconMode::WhenSelected, None),
+            switch_row(theme, "Disabled off", false, IconMode::WhenSelected, None),
+        ]
+        .spacing(12);
+
+        let always_section = column![
+            section_header("IconMode::Always", theme),
+            switch_row(
+                theme,
+                "On",
+                self.toggled_always,
+                IconMode::Always,
+                Some(Message::ToggleAlways)
+            ),
+            switch_row(
+                theme,
+                "Off",
+                !self.toggled_always,
+                IconMode::Always,
+                Some(Message::ToggleAlways)
+            ),
+            switch_row(theme, "Disabled on", true, IconMode::Always, None),
+            switch_row(theme, "Disabled off", false, IconMode::Always, None),
+        ]
+        .spacing(12);
+
+        column![
+            dynamic_section,
+            never_section,
+            when_selected_section,
+            always_section,
+        ]
+        .spacing(24)
         .into()
     }
 }

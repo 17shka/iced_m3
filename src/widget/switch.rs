@@ -650,7 +650,7 @@ where
         layout: iced::advanced::Layout<'b>,
         _renderer: &Renderer,
         _viewport: &iced::Rectangle,
-        _translation: iced::Vector,
+        translation: iced::Vector,
     ) -> Option<iced::advanced::overlay::Element<'b, Message, Theme, Renderer>> {
         let state = tree.state.downcast_ref::<State>();
         let bounds = layout.bounds();
@@ -664,7 +664,11 @@ where
             let overlay = StateLayerOverlay {
                 ripple: state.ripple,
                 layer: *self.style.state_layer(self.selected),
-                bounds: ripple_bounds,
+                bounds: Rectangle {
+                    x: ripple_bounds.x + translation.x,
+                    y: ripple_bounds.y + translation.y,
+                    ..ripple_bounds
+                },
             };
             overlay::Element::new(Box::new(overlay))
         })
