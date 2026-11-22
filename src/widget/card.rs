@@ -108,16 +108,20 @@ where
 impl<'a, Message, Theme, Renderer> Card<'a, Message, Theme, Renderer>
 where
     Message: Clone,
+    Renderer: iced::advanced::Renderer,
 {
     #[must_use]
     pub fn new(style: Style, content: impl Into<Element<'a, Message, Theme, Renderer>>) -> Self {
+        let content = content.into();
+        let size = content.as_widget().size_hint();
+
         Self {
-            content: content.into(),
+            content,
             interaction: Interaction::default(),
             padding: constants::DEFAULT_PADDING.into(),
             style,
-            width: Length::Shrink,
-            height: Length::Shrink,
+            width: size.width.fluid(),
+            height: size.height.fluid(),
         }
     }
 
@@ -260,15 +264,6 @@ where
             },
         );
 
-        let enabled = matches!(self.interaction, Interaction::Press(_));
-        tree.state.downcast_ref::<State>().ripple.draw(
-            renderer,
-            layout.bounds(),
-            self.style.border.radius,
-            self.style.state_layer,
-            enabled,
-        );
-
         self.content.as_widget().draw(
             &tree.children[0],
             renderer,
@@ -277,6 +272,18 @@ where
             layout.children().next().unwrap(),
             cursor,
             viewport,
+        );
+
+        // Can't be drawn over text or images, drawing it with `with_layer` instead causes
+        // unintended behavior where the state layer is being drawn over widget that would otherwise
+        // cover the card.
+        let enabled = matches!(self.interaction, Interaction::Press(_));
+        tree.state.downcast_ref::<State>().ripple.draw(
+            renderer,
+            layout.bounds(),
+            self.style.border.radius,
+            self.style.state_layer,
+            enabled,
         );
     }
 
@@ -387,6 +394,41 @@ where
         if !is_over && !matches!(event, iced::Event::Touch(_)) {
             state.is_pressed = false;
         }
+    }
+
+    fn operate(
+        &mut self,
+        tree: &mut Tree,
+        layout: iced::advanced::Layout<'_>,
+        renderer: &Renderer,
+        operation: &mut dyn iced::advanced::widget::Operation,
+    ) {
+        operation.container(None, layout.bounds());
+        operation.traverse(&mut |operation| {
+            self.content.as_widget_mut().operate(
+                &mut tree.children[0],
+                layout.children().next().unwrap(),
+                renderer,
+                operation,
+            );
+        });
+    }
+
+    fn overlay<'b>(
+        &'b mut self,
+        tree: &'b mut Tree,
+        layout: iced::advanced::Layout<'b>,
+        renderer: &Renderer,
+        viewport: &iced::Rectangle,
+        translation: iced::Vector,
+    ) -> Option<iced::advanced::overlay::Element<'b, Message, Theme, Renderer>> {
+        self.content.as_widget_mut().overlay(
+            &mut tree.children[0],
+            layout.children().next().unwrap(),
+            renderer,
+            viewport,
+            translation,
+        )
     }
 }
 
