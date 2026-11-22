@@ -83,7 +83,7 @@ pub struct Style {
 }
 
 impl Style {
-    fn new(theme: &(impl ColorScheme + ?Sized)) -> Self {
+    pub fn new(theme: &(impl ColorScheme + ?Sized)) -> Self {
         Self {
             state_layer_selected: StateLayer::new(theme.primary()),
             state_later_unselected: StateLayer::new(theme.on_surface()),
@@ -160,11 +160,10 @@ impl<Message> Switch<Message>
 where
     Message: Clone,
 {
-    // TODO: Should take a style instead of a theme
     #[must_use]
-    pub fn new(theme: &(impl ColorScheme + ?Sized), selected: bool) -> Self {
+    pub fn new(style: Style, selected: bool) -> Self {
         Self {
-            style: Style::new(theme),
+            style,
             icon_mode: IconMode::default(),
             selected,
             on_toggle: None,

@@ -184,11 +184,11 @@ where
 }
 
 #[must_use]
-pub fn switch<Message>(theme: &(impl ColorScheme + ?Sized), toggled: bool) -> Switch<Message>
+pub fn switch<Message>(style: switch::Style, toggled: bool) -> Switch<Message>
 where
     Message: Clone,
 {
-    Switch::new(theme, toggled)
+    Switch::new(style, toggled)
 }
 
 #[must_use]

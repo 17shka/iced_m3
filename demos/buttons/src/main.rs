@@ -438,14 +438,19 @@ impl State {
 
         let dark_mode_switch = row![
             iced::widget::text("Dark mode").color(self.theme.on_surface()),
-            switch(&self.theme, self.theme.mode == Mode::Dark).on_toggle(Message::ToggleDarkTheme)
+            switch(
+                switch::Style::new(&self.theme),
+                self.theme.mode == Mode::Dark
+            )
+            .on_toggle(Message::ToggleDarkTheme)
         ]
         .align_y(Alignment::Center)
         .spacing(8.0);
 
         let square_buttons_switch = row![
             iced::widget::text("Square buttons").color(self.theme.on_surface()),
-            switch(&self.theme, self.square).on_toggle(Message::ToggleSquareButtons)
+            switch(switch::Style::new(&self.theme), self.square)
+                .on_toggle(Message::ToggleSquareButtons)
         ]
         .align_y(Alignment::Center)
         .spacing(8.0);

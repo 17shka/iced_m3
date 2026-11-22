@@ -8,7 +8,7 @@ use iced_m3::{
     widget::{
         self,
         button::{self, Content},
-        switch::IconMode,
+        switch::{self, IconMode},
     },
 };
 
@@ -49,7 +49,7 @@ impl State {
                     .color(self.theme.on_surface()),
                 row![
                     text("With expressive animation"),
-                    widget::switch(&self.theme, self.toggled1)
+                    widget::switch(switch::Style::new(&self.theme), self.toggled1)
                         .motion_scheme(motion::Scheme::Expressive)
                         .icon_mode(self.icon_mode)
                         .on_toggle(Message::Toggle1)
@@ -58,7 +58,7 @@ impl State {
                 .align_y(Alignment::Center),
                 row![
                     text("With standard animation"),
-                    widget::switch(&self.theme, self.toggled2)
+                    widget::switch(switch::Style::new(&self.theme), self.toggled2)
                         .motion_scheme(motion::Scheme::Standard)
                         .icon_mode(self.icon_mode)
                         .on_toggle(Message::Toggle2)
@@ -67,13 +67,14 @@ impl State {
                 .align_y(Alignment::Center),
                 row![
                     text("Disabled selected"),
-                    widget::switch(&self.theme, true).icon_mode(self.icon_mode),
+                    widget::switch(switch::Style::new(&self.theme), true).icon_mode(self.icon_mode),
                 ]
                 .spacing(8)
                 .align_y(Alignment::Center),
                 row![
                     text("Disabled unselected"),
-                    widget::switch(&self.theme, false).icon_mode(self.icon_mode),
+                    widget::switch(switch::Style::new(&self.theme), false)
+                        .icon_mode(self.icon_mode),
                 ]
                 .spacing(8)
                 .align_y(Alignment::Center),

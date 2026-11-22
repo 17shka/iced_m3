@@ -188,13 +188,13 @@ impl State {
             .spacing(8),
             row![
                 iced::widget::text("Menu").color(self.theme.on_surface()),
-                switch(&self.theme, self.menu).on_toggle(Message::ToggleMenu)
+                switch(switch::Style::new(&self.theme), self.menu).on_toggle(Message::ToggleMenu)
             ]
             .align_y(Alignment::Center)
             .spacing(8),
             row![
                 iced::widget::text("Floating Action Button").color(self.theme.on_surface()),
-                switch(&self.theme, self.fab).on_toggle(Message::ToggleFAB)
+                switch(switch::Style::new(&self.theme), self.fab).on_toggle(Message::ToggleFAB)
             ]
             .align_y(Alignment::Center)
             .spacing(8),
