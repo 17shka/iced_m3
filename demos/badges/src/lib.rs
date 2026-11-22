@@ -1,5 +1,5 @@
 use iced::{
-    Alignment, Element, Length,
+    Alignment, Element,
     widget::{Space, center, column, row, text},
 };
 use iced_m3::theme::{ColorScheme, Theme};
@@ -28,11 +28,13 @@ impl Page {
         use iced_m3::widget::badge;
 
         let style = badge::Style::new(theme);
-        let mail_icon = text("mail")
+
+        let mail_icon = text("\u{e158}")
             .font(fonts::icons_filled())
             .size(24.0)
             .color(theme.on_surface());
-        let notif_icon = text("notifications")
+
+        let notif_icon = text("\u{e7f4}")
             .font(fonts::icons_filled())
             .size(24.0)
             .color(theme.on_surface());
@@ -40,57 +42,26 @@ impl Page {
         column![
             section_header("Badges", theme),
             row![
-                badge(
-                    style,
-                    Space::new().width(Length::Shrink).height(Length::Shrink)
-                ),
-                badge(
-                    style,
-                    Space::new().width(Length::Shrink).height(Length::Shrink)
-                )
-                .label("1"),
-                badge(
-                    style,
-                    Space::new().width(Length::Shrink).height(Length::Shrink)
-                )
-                .label("99"),
-                badge(
-                    style,
-                    Space::new().width(Length::Shrink).height(Length::Shrink)
-                )
-                .label("999+"),
+                badge(style, Space::new().width(6.0).height(6.0)),
+                badge(style, Space::new().width(12.0).height(16.0)).label("1"),
+                badge(style, Space::new().width(12.0).height(16.0)).label("99"),
+                badge(style, Space::new().width(12.0).height(16.0)).label("999+"),
             ]
             .spacing(16)
             .align_y(Alignment::Center),
             section_header("Badges on icons", theme),
             row![
                 center(
-                    row![
-                        mail_icon,
-                        badge(
-                            style,
-                            Space::new().width(Length::Shrink).height(Length::Shrink)
-                        )
+                    badge(style, mail_icon)
                         .label("3")
                         .bounds_mode(badge::BoundsMode::Symmetrical),
-                    ]
-                    .align_y(Alignment::Center)
-                    .spacing(0),
                 )
                 .width(48)
                 .height(48),
                 center(
-                    row![
-                        notif_icon,
-                        badge(
-                            style,
-                            Space::new().width(Length::Shrink).height(Length::Shrink)
-                        )
+                    badge(style, notif_icon)
                         .label("99+")
                         .bounds_mode(badge::BoundsMode::Symmetrical),
-                    ]
-                    .align_y(Alignment::Center)
-                    .spacing(0),
                 )
                 .width(48)
                 .height(48),

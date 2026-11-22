@@ -2018,7 +2018,7 @@ fn draw_inset_icon<R>(
             renderer.fill_text(
                 Text {
                     font,
-                    line_height: text::LineHeight::default(),
+                    line_height: text::LineHeight::Absolute(size.into()),
                     content: text.to_string(),
                     bounds: rect.size(),
                     size: size.into(),
@@ -2027,7 +2027,7 @@ fn draw_inset_icon<R>(
                     shaping: text::Shaping::Advanced,
                     wrapping: text::Wrapping::Word,
                 },
-                rect.position(),
+                rect.center(),
                 Color {
                     a: color.a * alpha,
                     ..color

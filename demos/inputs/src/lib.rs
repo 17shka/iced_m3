@@ -8,7 +8,6 @@ use iced_m3::widget::{button, text_input::TextInput};
 
 #[derive(Clone)]
 pub enum Message {
-    ToggleSwitch,
     TextInputChanged(String),
     SecureInputChanged(String),
     TextInputErrorToggle,
@@ -19,7 +18,6 @@ pub enum Message {
 }
 
 pub struct Page {
-    switch_value: bool,
     text_input_value: String,
     secure_text_input_value: String,
     text_input_error: bool,
@@ -32,7 +30,6 @@ pub struct Page {
 impl Default for Page {
     fn default() -> Self {
         Self {
-            switch_value: false,
             text_input_value: String::new(),
             secure_text_input_value: String::new(),
             text_input_error: false,
@@ -47,7 +44,6 @@ impl Default for Page {
 impl Page {
     pub fn update(&mut self, message: Message) {
         match message {
-            Message::ToggleSwitch => self.switch_value = !self.switch_value,
             Message::TextInputChanged(value) => self.text_input_value = value,
             Message::SecureInputChanged(value) => self.secure_text_input_value = value,
             Message::TextInputErrorToggle => self.text_input_error = !self.text_input_error,
@@ -66,13 +62,6 @@ impl Page {
 
     pub fn view<'a>(&self, theme: &'a Theme) -> Element<'a, Message> {
         column![
-            section_header("Switch", theme),
-            row![
-                text("Toggle me").color(theme.on_surface()),
-                iced_m3::widget::switch(theme, self.switch_value).on_toggle(Message::ToggleSwitch),
-            ]
-            .spacing(12)
-            .align_y(Alignment::Center),
             section_header("Text Input", theme),
             TextInput::new("Type here...", &self.text_input_value, theme)
                 .on_input(Message::TextInputChanged)

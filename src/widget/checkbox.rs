@@ -54,6 +54,26 @@ impl Value {
     pub fn is_selected(self) -> bool {
         matches!(self, Self::Checked | Self::Indeterminate)
     }
+
+    #[must_use]
+    // Unchecked -> Checked
+    pub fn toggle(self) -> Self {
+        if self.is_checked() {
+            Self::Unchecked
+        } else {
+            Self::Checked
+        }
+    }
+
+    #[must_use]
+    // Unchecked -> Checked -> Indeterminate
+    pub fn next(self) -> Self {
+        match self {
+            Self::Unchecked => Self::Checked,
+            Self::Checked => Self::Indeterminate,
+            Self::Indeterminate => Self::Unchecked,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

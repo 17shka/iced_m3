@@ -9,26 +9,28 @@ use iced_m3::{
 };
 use menu_demo as menu;
 use navbar_demo as navbar;
+use shapes_demo as shapes;
 
 const APP_NAME: &str = "Material 3 Showcase";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Tab {
     #[default]
-    Buttons,
-    Inputs,
-    Sliders,
-    Progress,
-    Cards,
-    Fab,
-    Navigation,
-    Dialog,
-    Groups,
-    Checkbox,
-    Switch,
-    Menu,
     Badge,
+    Groups,
+    Buttons,
+    Cards,
+    Checkbox,
+    Dialog,
+    Fab,
+    Inputs,
+    Menu,
+    Navigation,
     NavRail,
+    Progress,
+    Shapes,
+    Sliders,
+    Switch,
 }
 
 impl Tab {
@@ -38,39 +40,43 @@ impl Tab {
 
     fn label(self) -> &'static str {
         match self {
-            Tab::Buttons => "Buttons",
-            Tab::Inputs => "Inputs",
-            Tab::Sliders => "Sliders",
-            Tab::Progress => "Progress",
-            Tab::Cards => "Cards",
-            Tab::Fab => "FAB",
-            Tab::Navigation => "Navigation",
-            Tab::Dialog => "Dialog",
-            Tab::Groups => "Groups",
-            Tab::Checkbox => "Checkbox",
-            Tab::Switch => "Switch",
-            Tab::Menu => "Menu",
             Tab::Badge => "Badge",
-            Tab::NavRail => "NavRail",
+            Tab::Groups => "Button groups",
+            Tab::Buttons => "Buttons",
+            Tab::Cards => "Cards",
+            Tab::Checkbox => "Checkbox",
+            Tab::Dialog => "Dialog",
+            Tab::Fab => "FAB",
+
+            Tab::Inputs => "Inputs",
+            Tab::Menu => "Menu",
+            Tab::Navigation => "Navigation bar",
+            Tab::NavRail => "Navigation rail",
+            Tab::Progress => "Progress",
+            Tab::Shapes => "Shapes",
+            Tab::Sliders => "Sliders",
+            Tab::Switch => "Switch",
         }
     }
 
     fn icon(self) -> &'static str {
         match self {
-            Tab::Buttons => "touch_app",
-            Tab::Inputs => "edit",
-            Tab::Sliders => "tune",
-            Tab::Progress => "hourglass_empty",
-            Tab::Cards => "dashboard",
-            Tab::Fab => "add_circle",
-            Tab::Navigation => "explore",
-            Tab::Dialog => "chat_bubble",
-            Tab::Groups => "group_work",
-            Tab::Checkbox => "check_box",
-            Tab::Switch => "toggle_on",
-            Tab::Menu => "menu",
             Tab::Badge => "notifications",
+            Tab::Buttons => "touch_app",
+            Tab::Cards => "dashboard",
+            Tab::Checkbox => "check_box",
+            Tab::Dialog => "chat_bubble",
+            Tab::Fab => "add_circle",
+
+            Tab::Groups => "group_work",
+            Tab::Inputs => "edit",
+            Tab::Menu => "menu",
+            Tab::Navigation => "explore",
             Tab::NavRail => "view_sidebar",
+            Tab::Progress => "hourglass_empty",
+            Tab::Shapes => "interests",
+            Tab::Sliders => "tune",
+            Tab::Switch => "toggle_on",
         }
     }
 }
@@ -86,7 +92,9 @@ enum Message {
     Progress(progress_indicators::Message),
     Cards(card::Message),
     Fab(fab::Message),
+
     Navigation(navbar::Message),
+    Shapes(shapes::Message),
     Dialog(dialog::Message),
     Groups(button_groups::Message),
     Checkbox(checkbox::Message),
@@ -114,6 +122,8 @@ struct State {
     menu_page: menu::Page,
     badge_page: badges::Page,
     navrail_page: ::navrail::Page,
+
+    shapes_page: shapes::Page,
 }
 
 impl Default for State {
@@ -136,6 +146,8 @@ impl Default for State {
             menu_page: menu::Page::default(),
             badge_page: badges::Page::default(),
             navrail_page: ::navrail::Page::default(),
+
+            shapes_page: shapes::Page::default(),
         }
     }
 }
@@ -157,7 +169,9 @@ impl State {
             Message::Progress(msg) => self.progress_page.update(msg),
             Message::Cards(msg) => self.card_page.update(msg),
             Message::Fab(msg) => self.fab_page.update(msg),
+
             Message::Navigation(msg) => self.navbar_page.update(msg),
+            Message::Shapes(msg) => self.shapes_page.update(msg),
             Message::Dialog(msg) => self.dialog_page.update(msg),
             Message::Groups(msg) => self.groups_page.update(msg),
             Message::Checkbox(msg) => self.checkbox_page.update(msg),
@@ -171,20 +185,21 @@ impl State {
 
     fn view(&self) -> Element<'_, Message> {
         let nav_items: Vec<navrail::Item<Message>> = [
-            Tab::Buttons,
-            Tab::Inputs,
-            Tab::Sliders,
-            Tab::Progress,
-            Tab::Cards,
-            Tab::Fab,
-            Tab::Navigation,
-            Tab::Dialog,
-            Tab::Groups,
-            Tab::Checkbox,
-            Tab::Switch,
-            Tab::Menu,
             Tab::Badge,
+            Tab::Groups,
+            Tab::Buttons,
+            Tab::Cards,
+            Tab::Checkbox,
+            Tab::Dialog,
+            Tab::Fab,
+            Tab::Inputs,
+            Tab::Menu,
+            Tab::Navigation,
             Tab::NavRail,
+            Tab::Progress,
+            Tab::Shapes,
+            Tab::Sliders,
+            Tab::Switch,
         ]
         .into_iter()
         .map(|tab| navrail::Item {
@@ -233,20 +248,22 @@ impl State {
         .align_y(Alignment::Center);
 
         let content: Element<'_, Message> = match self.tab {
-            Tab::Buttons => self.buttons_page.view(&self.theme).map(Message::Buttons),
-            Tab::Inputs => self.inputs_page.view(&self.theme).map(Message::Inputs),
-            Tab::Sliders => self.sliders_page.view(&self.theme).map(Message::Sliders),
-            Tab::Progress => self.progress_page.view(&self.theme).map(Message::Progress),
-            Tab::Cards => self.card_page.view(&self.theme).map(Message::Cards),
-            Tab::Fab => self.fab_page.view(&self.theme).map(Message::Fab),
-            Tab::Navigation => self.navbar_page.view(&self.theme).map(Message::Navigation),
-            Tab::Dialog => self.dialog_page.view(&self.theme).map(Message::Dialog),
-            Tab::Groups => self.groups_page.view(&self.theme).map(Message::Groups),
-            Tab::Checkbox => self.checkbox_page.view(&self.theme).map(Message::Checkbox),
-            Tab::Switch => self.switch_page.view(&self.theme).map(Message::Switch),
-            Tab::Menu => self.menu_page.view(&self.theme).map(Message::Menu),
             Tab::Badge => self.badge_page.view(&self.theme).map(Message::Badge),
+            Tab::Groups => self.groups_page.view(&self.theme).map(Message::Groups),
+            Tab::Buttons => self.buttons_page.view(&self.theme).map(Message::Buttons),
+            Tab::Cards => self.card_page.view(&self.theme).map(Message::Cards),
+            Tab::Checkbox => self.checkbox_page.view(&self.theme).map(Message::Checkbox),
+            Tab::Dialog => self.dialog_page.view(&self.theme).map(Message::Dialog),
+            Tab::Fab => self.fab_page.view(&self.theme).map(Message::Fab),
+
+            Tab::Inputs => self.inputs_page.view(&self.theme).map(Message::Inputs),
+            Tab::Menu => self.menu_page.view(&self.theme).map(Message::Menu),
+            Tab::Navigation => self.navbar_page.view(&self.theme).map(Message::Navigation),
             Tab::NavRail => self.navrail_page.view(&self.theme).map(Message::NavRail),
+            Tab::Progress => self.progress_page.view(&self.theme).map(Message::Progress),
+            Tab::Shapes => self.shapes_page.view(&self.theme).map(Message::Shapes),
+            Tab::Sliders => self.sliders_page.view(&self.theme).map(Message::Sliders),
+            Tab::Switch => self.switch_page.view(&self.theme).map(Message::Switch),
         };
 
         let main_area = container(

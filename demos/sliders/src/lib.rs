@@ -162,16 +162,10 @@ impl Page {
                 .value_indicator(slider::ValueIndicator::Value),
             slider(0.0..=100.0, self.volume, Message::Volume, style)
                 .stops(false)
-                .inset_icon_start(slider::InsetIcon::dual(
-                    Icon::Text {
-                        text: "volume_down".into(),
-                        font: Some(fonts::icons_filled())
-                    },
-                    Icon::Text {
-                        text: "volume_up".into(),
-                        font: Some(fonts::icons_filled())
-                    },
-                ))
+                .inset_icon_start(slider::InsetIcon::new(Icon::Text {
+                    text: "volume_down".into(),
+                    font: Some(fonts::icons_filled()),
+                }))
                 .inset_icon_end(slider::InsetIcon::new(Icon::Text {
                     text: "volume_up".into(),
                     font: Some(fonts::icons_filled()),
