@@ -18,7 +18,7 @@ pub(crate) mod constants {
     pub const SLOW_EFFECTS_EXPRESSIVE: Spring = Spring::new(1.0, 800.0);
 }
 
-use std::time::Instant;
+use iced::time::Instant;
 
 #[cfg(feature = "pub-internal-const")]
 pub use constants::*;
@@ -79,6 +79,46 @@ pub fn slow_effects(scheme: Scheme) -> Spring {
     match scheme {
         Scheme::Expressive => constants::SLOW_EFFECTS_EXPRESSIVE,
         Scheme::Standard => constants::SLOW_EFFECTS_STANDARD,
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Speed {
+    Fast,
+    #[default]
+    Default,
+    Slow,
+}
+
+impl Speed {
+    #[must_use]
+    pub fn spatial(self, scheme: Scheme) -> Spring {
+        match self {
+            Speed::Fast => fast_spatial(scheme),
+            Speed::Default => default_spatial(scheme),
+            Speed::Slow => slow_spatial(scheme),
+        }
+    }
+
+    #[must_use]
+    pub fn effects(self, scheme: Scheme) -> Spring {
+        match self {
+            Speed::Fast => fast_effects(scheme),
+            Speed::Default => default_effects(scheme),
+            Speed::Slow => slow_effects(scheme),
+        }
+    }
+}
+
+impl Scheme {
+    #[must_use]
+    pub fn spatial(self, speed: Speed) -> Spring {
+        speed.spatial(self)
+    }
+
+    #[must_use]
+    pub fn effects(self, speed: Speed) -> Spring {
+        speed.effects(self)
     }
 }
 
