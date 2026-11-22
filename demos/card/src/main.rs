@@ -46,9 +46,8 @@ impl<'a> State<'a> {
                 let interaction = match &self.interaction {
                     Interaction::NonInteractive => Interaction::NonInteractive,
                     Interaction::Press(on_press) => {
-                        Interaction::Press(Action::Direct(on_press.resolve()))
+                        Interaction::Press(on_press.as_ref().map(|m| Action::Direct(m.resolve())))
                     }
-                    Interaction::Disabled => Interaction::Disabled,
                 };
                 iced_m3::widget::card(style, center(text(label).size(24.0).color(label_color)))
                     .interaction(interaction)
@@ -131,10 +130,10 @@ impl<'a> State<'a> {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Noop => {}
-            Message::SetDisabled => self.interaction = Interaction::Disabled,
+            Message::SetDisabled => self.interaction = Interaction::Press(None),
             Message::SetNonInteractive => self.interaction = Interaction::NonInteractive,
             Message::SetPressable => {
-                self.interaction = Interaction::Press(Action::Direct(Message::Noop))
+                self.interaction = Interaction::Press(Some(Action::Direct(Message::Noop)))
             }
         }
         Task::none()
