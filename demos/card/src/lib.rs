@@ -29,7 +29,7 @@ impl Default for Page {
     fn default() -> Self {
         Self {
             press_count: 0,
-            interaction: Interaction::Press(Action::Direct(Message::Pressed)),
+            interaction: Interaction::Press(Some(Action::Direct(Message::Pressed))),
         }
     }
 }
@@ -42,9 +42,9 @@ impl Page {
         match message {
             Message::Pressed => self.press_count += 1,
             Message::SetNonInteractive => self.interaction = Interaction::NonInteractive,
-            Message::SetDisabled => self.interaction = Interaction::Disabled,
+            Message::SetDisabled => self.interaction = Interaction::Press(None),
             Message::SetPressable => {
-                self.interaction = Interaction::Press(Action::Direct(Message::Pressed))
+                self.interaction = Interaction::Press(Some(Action::Direct(Message::Pressed)))
             }
         }
     }
@@ -61,9 +61,8 @@ impl Page {
             let interaction = match &self.interaction {
                 Interaction::NonInteractive => Interaction::NonInteractive,
                 Interaction::Press(on_press) => {
-                    Interaction::Press(Action::Direct(on_press.resolve()))
+                    Interaction::Press(on_press.as_ref().map(|m| Action::Direct(m.resolve())))
                 }
-                Interaction::Disabled => Interaction::Disabled,
             };
             let content: Element<'_, Message> =
                 center(text(label).size(24.0).color(label_color)).into();

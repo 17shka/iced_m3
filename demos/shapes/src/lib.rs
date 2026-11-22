@@ -231,8 +231,8 @@ impl Page {
             .width(124.0)
             .height(124.0)
             .padding(8.0)
-            .interaction(card::Interaction::Press(Action::Direct(Message::Select(
-                *shape,
+            .interaction(card::Interaction::Press(Some(Action::Direct(
+                Message::Select(*shape),
             ))))
             .into()
         });

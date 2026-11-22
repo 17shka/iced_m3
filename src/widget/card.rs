@@ -88,8 +88,7 @@ where
 {
     #[default]
     NonInteractive,
-    Press(Action<'a, Message>),
-    Disabled,
+    Press(Option<Action<'a, Message>>),
 }
 
 // TODO: Basic animation
@@ -257,8 +256,12 @@ where
                 shadow: shadow(self.style.shadow_color, self.style.elevation),
                 ..Default::default()
             },
-            if matches!(self.interaction, Interaction::Disabled) {
-                self.style.container_color_disabled
+            if let Interaction::Press(action) = &self.interaction {
+                if action.is_none() {
+                    self.style.container_color_disabled
+                } else {
+                    self.style.container_color
+                }
             } else {
                 self.style.container_color
             },
@@ -368,7 +371,10 @@ where
                 if state.is_pressed =>
             {
                 shell.capture_event();
-                if is_over && let Interaction::Press(on_press) = &self.interaction {
+                if is_over
+                    && let Interaction::Press(on_press) = &self.interaction
+                    && let Some(on_press) = on_press
+                {
                     shell.publish(on_press.resolve());
                 }
                 state.is_pressed = false;
@@ -378,6 +384,7 @@ where
                 shell.capture_event();
                 if bounds.contains(*position)
                     && let Interaction::Press(on_press) = &self.interaction
+                    && let Some(on_press) = on_press
                 {
                     shell.publish(on_press.resolve());
                 }

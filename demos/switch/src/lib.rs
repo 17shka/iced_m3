@@ -5,7 +5,10 @@ use iced::{
 use iced_m3::{
     animation::motion,
     theme::{ColorScheme, Theme},
-    widget::{self, button, switch::IconMode},
+    widget::{
+        self, button,
+        switch::{self, IconMode},
+    },
 };
 
 #[derive(Clone)]
@@ -58,7 +61,7 @@ fn switch_row<'a>(
     icon_mode: IconMode,
     on_toggle: Option<Message>,
 ) -> Element<'a, Message> {
-    let s = widget::switch(theme, toggled).icon_mode(icon_mode);
+    let s = widget::switch(switch::Style::new(theme), toggled).icon_mode(icon_mode);
     let s = if let Some(msg) = on_toggle {
         s.on_toggle(msg)
     } else {
@@ -90,7 +93,7 @@ impl Demo {
             section_header("Dynamic Icon Mode", theme),
             row![
                 label("Interactive switch", theme),
-                widget::switch(theme, self.toggled_demo)
+                widget::switch(switch::Style::new(theme), self.toggled_demo)
                     .motion_scheme(motion::Scheme::Expressive)
                     .icon_mode(self.icon_mode)
                     .on_toggle(Message::ToggleDemo),

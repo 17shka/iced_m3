@@ -159,13 +159,13 @@ impl Page {
             .spacing(8),
             row![
                 text("Menu").color(theme.on_surface()),
-                switch(theme, self.menu).on_toggle(Message::ToggleMenu)
+                switch(switch::Style::new(theme), self.menu).on_toggle(Message::ToggleMenu)
             ]
             .align_y(Alignment::Center)
             .spacing(8),
             row![
                 text("Floating Action Button").color(theme.on_surface()),
-                switch(theme, self.fab).on_toggle(Message::ToggleFAB)
+                switch(switch::Style::new(theme), self.fab).on_toggle(Message::ToggleFAB)
             ]
             .align_y(Alignment::Center)
             .spacing(8),
