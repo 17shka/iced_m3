@@ -255,39 +255,40 @@ where
             let paragraph = state.paragraph.as_ref().unwrap();
             let badge_bounds = state.badge_bounds.unwrap();
 
-            renderer.with_layer(bounds, |renderer| {
-                renderer.fill_quad(
-                    iced::advanced::renderer::Quad {
-                        bounds: Rectangle {
-                            x: bounds.x + badge_bounds.x,
-                            y: bounds.y + badge_bounds.y,
-                            width: badge_bounds.width,
-                            height: badge_bounds.height,
-                        },
-                        border: self.style.container_border,
-                        ..Default::default()
+            // Draw directly instead of inside a nested layer: a layer is only
+            // clipped to its own bounds, so `with_layer` would let the badge
+            // escape the clip of an enclosing scrollable.
+            renderer.fill_quad(
+                iced::advanced::renderer::Quad {
+                    bounds: Rectangle {
+                        x: bounds.x + badge_bounds.x,
+                        y: bounds.y + badge_bounds.y,
+                        width: badge_bounds.width,
+                        height: badge_bounds.height,
                     },
-                    self.style.container_color,
-                );
+                    border: self.style.container_border,
+                    ..Default::default()
+                },
+                self.style.container_color,
+            );
 
-                renderer.fill_paragraph(
-                    paragraph,
-                    bounds.position()
-                        + Vector {
-                            x: badge_bounds.x + BADGE_CONTENT_PADDING,
-                            y: badge_bounds.y + (badge_bounds.height - LABEL_FONT_SIZE) / 2.0,
-                        },
-                    self.style.label_color,
-                    bounds,
-                );
-            });
+            renderer.fill_paragraph(
+                paragraph,
+                bounds.position()
+                    + Vector {
+                        x: badge_bounds.x + BADGE_CONTENT_PADDING,
+                        y: badge_bounds.y + (badge_bounds.height - LABEL_FONT_SIZE) / 2.0,
+                    },
+                self.style.label_color,
+                bounds,
+            );
         } else {
             let size = 6.0;
             renderer.fill_quad(
                 iced::advanced::renderer::Quad {
                     bounds: Rectangle {
                         x: bounds.x + bounds.width - size,
-                        y: bounds.y + (bounds.height - size) / 2.0,
+                        y: bounds.y,
                         width: size,
                         height: size,
                     },

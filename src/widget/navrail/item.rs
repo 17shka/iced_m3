@@ -380,23 +380,55 @@ where
             (pill_y + (pill_height - large_bounds.height) / 2.0).round(),
         ));
 
+        let has_label = self
+            .content
+            .badge
+            .as_ref()
+            .is_some_and(|badge| badge.label.is_some());
+
+        // Right edge of the badge in the fully expanded state. Used to size the
+        // item, so the width does not depend on the current expansion and stays
+        // stable while the rail animates.
+        let mut expanded_badge_right = 0.0f32;
+
         let badge_node = self.badge.as_mut().map(|badge| {
             let node = badge
                 .as_widget_mut()
                 .layout(&mut tree.children[0], renderer, limits);
-            let has_label = self
-                .content
-                .badge
-                .as_ref()
-                .is_some_and(|badge| badge.label.is_some());
-            let badge_x_offset = if has_label { 8.0 } else { 14.0 };
+
             let large_label_end = large_label_node.bounds().x + large_bounds.width;
-            let expanded_badge_x = large_label_end - badge_x_offset;
-            let badge_x = lerp(icon_x, expanded_badge_x, expansion).round();
             let icon_center_y = icon_y + ICON_SIZE / 2.0;
             let label_center_y = large_label_node.bounds().y + large_bounds.height / 2.0;
-            let expanded_badge_y = label_center_y - if has_label { 8.0 } else { 12.0 };
-            let badge_y = lerp(icon_center_y - 12.0, expanded_badge_y, expansion).round();
+
+            // The badge is drawn from the top-right corner of its base, so when
+            // collapsed it sits on the icon's top-right corner and when expanded
+            // it trails the end of the label.
+            let (collapsed_x, expanded_x) = if has_label {
+                (icon_x, large_label_end - 8.0)
+            } else {
+                (icon_x, large_label_end - 14.0)
+            };
+            let (collapsed_y, expanded_y) = if has_label {
+                (icon_center_y - 12.0, label_center_y - 8.0)
+            } else {
+                (icon_center_y - ICON_SIZE / 2.0, label_center_y - 3.0)
+            };
+
+            let badge_x = lerp(collapsed_x, expanded_x, expansion).round();
+            let badge_y = lerp(collapsed_y, expanded_y, expansion).round();
+
+            expanded_badge_right = expanded_x + node.bounds().width;
+
+            // Collapsed items are as wide as the rail itself, so keep the badge
+            // inside that width instead of letting it spill over the edge.
+            let badge_x = if self.expanded {
+                badge_x
+            } else {
+                badge_x
+                    .min((node_width - node.bounds().width).max(0.0))
+                    .round()
+            };
+
             node.move_to(Point::new(badge_x, badge_y))
         });
 
@@ -406,11 +438,22 @@ where
             small_label_node,
             large_label_node,
         ];
+
+        let mut node_size = Size::new(node_width, node_height);
         if let Some(node) = badge_node {
+            if self.expanded {
+                // The badge trails the label and may be wider than the label's
+                // trailing padding. Grow the item (and therefore the auto-sized
+                // rail) so the badge is never drawn past the rail's edge.
+                if expanded_badge_right > node_size.width {
+                    node_size.width = expanded_badge_right + INDICATOR_LARGE_PADDING;
+                }
+            }
+
             children.push(node);
         }
 
-        Node::with_children(Size::new(node_width, node_height), children)
+        Node::with_children(node_size, children)
     }
 
     fn draw(

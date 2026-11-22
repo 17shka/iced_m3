@@ -255,19 +255,24 @@ impl State {
             Tab::Switch => self.switch_page.view(&self.theme).map(Message::Switch),
         };
 
-        let main_area = container(
-            column![
-                header,
-                scrollable(&self.theme, content)
-                    .spacing(16)
-                    .width(Length::Fill)
-            ]
-            .spacing(16)
-            .padding(16),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(|_| iced::widget::container::Style::default().background(self.theme.background()));
+        // The navigation rail page must not be wrapped in a scrollable: the
+        // scrollable lays its content out with a compressed cross axis, so the
+        // rail would only be as tall as its siblings instead of filling the
+        // remaining height.
+        let body: Element<'_, Message> = match self.tab {
+            Tab::NavRail => content,
+            _ => scrollable(&self.theme, content)
+                .spacing(16)
+                .width(Length::Fill)
+                .into(),
+        };
+
+        let main_area = container(column![header, body].spacing(16).padding(16))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(|_| {
+                iced::widget::container::Style::default().background(self.theme.background())
+            });
 
         row![
             container(navrail_widget).style(|_| {
