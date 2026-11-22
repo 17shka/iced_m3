@@ -3,7 +3,7 @@ use iced::{
     widget::{column, row, text},
 };
 use iced_m3::theme::{Accent, ColorScheme, Theme};
-use iced_m3::widget::{button, loading_indicator, progress_bar};
+use iced_m3::widget::{button, circular_loading_indicator, loading_indicator, progress_bar};
 
 #[derive(Clone)]
 pub enum Message {
@@ -82,6 +82,14 @@ impl Page {
             row![
                 loading_indicator(loading_indicator::Style::contained(theme)),
                 loading_indicator(loading_indicator::Style::uncontained(theme)),
+            ]
+            .spacing(16)
+            .align_y(Alignment::Center),
+            section_header("Circular spinner", theme),
+            row![
+                circular_loading_indicator(loading_indicator::Style::contained(theme)),
+                circular_loading_indicator(loading_indicator::Style::uncontained(theme)),
+                circular_loading_indicator(loading_indicator::Style::uncontained(theme)).size(24.0),
             ]
             .spacing(16)
             .align_y(Alignment::Center),

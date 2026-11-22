@@ -1,11 +1,11 @@
 //! Loading indicators show the progress of a process for a short wait time
 
 use std::{
-    f32::consts::PI,
+    f32::consts::{PI, TAU},
     time::{Duration, Instant},
 };
 
-use iced::{Color, Element, Pixels, Radians, Size, Vector};
+use iced::{Color, Element, Pixels, Point, Radians, Size, Vector};
 use iced_widget::{
     Canvas,
     canvas::{self, Fill},
@@ -236,6 +236,148 @@ where
     Renderer: 'a + iced_widget::renderer::geometry::Renderer,
 {
     fn from(value: LoadingIndicator) -> Self {
+        let size = value.size.0;
+        Element::new(Canvas::new(value).width(size).height(size))
+    }
+}
+
+const SPINNER_CYCLE_SECONDS: f32 = 1.333;
+const SPINNER_ARC_MIN_DEGREES: f32 = 30.0;
+const SPINNER_ARC_MAX_DEGREES: f32 = 270.0;
+
+/// A classic indeterminate circular spinner.
+pub struct CircularLoadingIndicator {
+    style: Style,
+    size: Pixels,
+}
+
+impl CircularLoadingIndicator {
+    #[must_use]
+    pub fn new(style: Style) -> Self {
+        Self {
+            style,
+            size: constants::DEFAULT_CONTAINER_SIZE,
+        }
+    }
+
+    #[must_use]
+    pub fn size(mut self, size: impl Into<Pixels>) -> Self {
+        self.size = size.into();
+        self
+    }
+}
+
+pub struct CircularState {
+    start: Instant,
+}
+
+impl Default for CircularState {
+    fn default() -> Self {
+        Self {
+            start: Instant::now(),
+        }
+    }
+}
+
+impl<Message, Theme, Renderer> canvas::Program<Message, Theme, Renderer>
+    for CircularLoadingIndicator
+where
+    Renderer: iced_widget::renderer::geometry::Renderer,
+{
+    type State = CircularState;
+
+    fn draw(
+        &self,
+        state: &Self::State,
+        renderer: &Renderer,
+        _theme: &Theme,
+        bounds: iced::Rectangle,
+        _cursor: iced::advanced::mouse::Cursor,
+    ) -> Vec<canvas::Geometry<Renderer>> {
+        let mut frame = canvas::Frame::new(renderer, bounds.size());
+
+        let (indicator_color, container_color) = match self.style {
+            Style::Contained {
+                indicator_color,
+                container_color,
+            } => (indicator_color, Some(container_color)),
+            Style::Uncontained { indicator_color } => (indicator_color, None),
+        };
+
+        if let Some(color) = container_color {
+            let radius = self.size.0 / 2.0;
+            let circle = canvas::Path::circle(frame.center(), radius);
+            frame.fill(&circle, color);
+        }
+
+        let indicator_size = (self.size.0 / constants::DEFAULT_CONTAINER_SIZE.0)
+            * constants::DEFAULT_INDICATOR_SIZE.0;
+        let stroke_width = (indicator_size * (4.0 / constants::DEFAULT_INDICATOR_SIZE.0))
+            .max(2.0)
+            .min(indicator_size / 2.0);
+        let radius = ((indicator_size - stroke_width) / 2.0).max(0.0);
+
+        let elapsed = Instant::now().duration_since(state.start).as_secs_f32();
+        let cycle = (elapsed / SPINNER_CYCLE_SECONDS).fract();
+
+        // Head eases out, tail eases in: both edges keep moving forward.
+        let start = cycle.powi(3) * TAU;
+        let sweep = SPINNER_ARC_MIN_DEGREES.to_radians()
+            + (SPINNER_ARC_MAX_DEGREES - SPINNER_ARC_MIN_DEGREES).to_radians()
+                * 4.0
+                * cycle
+                * (1.0 - cycle);
+
+        let path = arc_path(frame.center(), radius, start, sweep);
+        let stroke = canvas::Stroke::default()
+            .with_color(indicator_color)
+            .with_width(stroke_width)
+            .with_line_cap(canvas::LineCap::Round);
+
+        frame.stroke(&path, stroke);
+
+        vec![frame.into_geometry()]
+    }
+
+    fn update(
+        &self,
+        _state: &mut Self::State,
+        _event: &iced::Event,
+        _bounds: iced::Rectangle,
+        _cursor: iced::advanced::mouse::Cursor,
+    ) -> Option<canvas::Action<Message>> {
+        Some(canvas::Action::request_redraw())
+    }
+}
+
+fn arc_path(center: Point, radius: f32, start: f32, sweep: f32) -> canvas::Path {
+    let steps = ((sweep.abs() * radius / 1.5).ceil() as usize).clamp(2, 128);
+
+    canvas::Path::new(|builder| {
+        for i in 0..=steps {
+            let angle = start + sweep * (i as f32 / steps as f32);
+            let point = Point::new(
+                center.x + radius * angle.cos(),
+                center.y + radius * angle.sin(),
+            );
+
+            if i == 0 {
+                builder.move_to(point);
+            } else {
+                builder.line_to(point);
+            }
+        }
+    })
+}
+
+impl<'a, Message, Theme, Renderer> From<CircularLoadingIndicator>
+    for Element<'a, Message, Theme, Renderer>
+where
+    Message: 'a,
+    Theme: 'a,
+    Renderer: 'a + iced_widget::renderer::geometry::Renderer,
+{
+    fn from(value: CircularLoadingIndicator) -> Self {
         let size = value.size.0;
         Element::new(Canvas::new(value).width(size).height(size))
     }

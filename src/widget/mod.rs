@@ -38,7 +38,7 @@ use std::ops::RangeInclusive;
 use iced::{Color, Element, Font, Pixels};
 
 #[cfg(feature = "shapes")]
-use crate::widget::loading_indicator::LoadingIndicator;
+use crate::widget::loading_indicator::{CircularLoadingIndicator, LoadingIndicator};
 use crate::{
     theme::ColorScheme,
     widget::{
@@ -258,6 +258,13 @@ where
 #[must_use]
 pub fn loading_indicator(style: loading_indicator::Style) -> LoadingIndicator {
     LoadingIndicator::new(style)
+}
+
+/// A classic indeterminate circular spinner.
+#[cfg(feature = "shapes")]
+#[must_use]
+pub fn circular_loading_indicator(style: loading_indicator::Style) -> CircularLoadingIndicator {
+    CircularLoadingIndicator::new(style)
 }
 
 /// Connected button groups help people select options, switch views, or sort elements in a page.

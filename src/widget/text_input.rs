@@ -1,41 +1,10 @@
-//! Text inputs display fields that can be filled with text.
-//!
-//! # Example
-//! ```no_run
-//! # mod iced { pub mod widget { pub use iced_widget::*; } pub use iced_widget::Renderer; pub use iced_widget::core::*; }
-//! # pub type Element<'a, Message> = iced_widget::core::Element<'a, Message, iced_widget::Theme, iced_widget::Renderer>;
-//! #
-//! use iced::widget::text_input;
-//!
-//! struct State {
-//!    content: String,
-//! }
-//!
-//! #[derive(Debug, Clone)]
-//! enum Message {
-//!     ContentChanged(String)
-//! }
-//!
-//! fn view(state: &State) -> Element<'_, Message> {
-//!     text_input("Type something here...", &state.content)
-//!         .on_input(Message::ContentChanged)
-//!         .into()
-//! }
-//!
-//! fn update(state: &mut State, message: Message) {
-//!     match message {
-//!         Message::ContentChanged(content) => {
-//!             state.content = content;
-//!         }
-//!     }
-//! }
-//! ```
 mod editor;
 mod value;
 
 pub mod cursor;
 
 pub use cursor::Cursor;
+use iced::advanced::svg;
 use iced::border::Radius;
 pub use value::Value;
 
@@ -59,48 +28,18 @@ use iced_widget::core::widget::tree::{self, Tree};
 use iced_widget::core::window;
 use iced_widget::core::{
     Alignment, Background, Border, Color, Element, Event, InputMethod, Layout, Length, Padding,
-    Pixels, Point, Rectangle, Shell, Size, Theme, Vector, Widget,
+    Pixels, Point, Radians, Rectangle, Shell, Size, Theme, Vector, Widget,
 };
 
+use crate::animation::motion::{self, SpringValue};
 use crate::style::DIM_ALPHA;
 use crate::theme::ColorScheme;
+use crate::widget::common_icons;
 
-/// A field that can be filled with text.
-///
-/// # Example
-/// ```no_run
-/// # mod iced { pub mod widget { pub use iced_widget::*; } pub use iced_widget::Renderer; pub use iced_widget::core::*; }
-/// # pub type Element<'a, Message> = iced_widget::core::Element<'a, Message, iced_widget::Theme, iced_widget::Renderer>;
-/// #
-/// use iced::widget::text_input;
-///
-/// struct State {
-///    content: String,
-/// }
-///
-/// #[derive(Debug, Clone)]
-/// enum Message {
-///     ContentChanged(String)
-/// }
-///
-/// fn view(state: &State) -> Element<'_, Message> {
-///     text_input("Type something here...", &state.content)
-///         .on_input(Message::ContentChanged)
-///         .into()
-/// }
-///
-/// fn update(state: &mut State, message: Message) {
-///     match message {
-///         Message::ContentChanged(content) => {
-///             state.content = content;
-///         }
-///     }
-/// }
-/// ```
 pub struct TextInput<'a, Message, Theme = iced_widget::Theme, Renderer = iced_widget::Renderer>
 where
     Theme: Catalog,
-    Renderer: text::Renderer,
+    Renderer: text::Renderer + svg::Renderer,
 {
     id: Option<widget::Id>,
     placeholder: String,
@@ -115,6 +54,7 @@ where
     on_input: Option<Box<dyn Fn(String) -> Message + 'a>>,
     on_paste: Option<Box<dyn Fn(String) -> Message + 'a>>,
     on_submit: Option<Message>,
+    on_toggle_secure: Option<Message>,
     icon: Option<Icon<Renderer::Font>>,
     class: Theme::Class<'a>,
     last_status: Option<Status>,
@@ -133,12 +73,14 @@ const LABEL_TEXT_OFFSET: Point = Point::new(
     LABEL_TEXT_SIZE.0 / 4.0 - BORDER_WIDTH / 2.0,
 );
 const BORDER_WIDTH: f32 = 2.0;
+const EYE_ICON_SIZE: f32 = 24.0;
+const EYE_ICON_SPACING: f32 = 8.0;
 
 impl<'a, Message, Theme, Renderer> TextInput<'a, Message, Theme, Renderer>
 where
     Message: Clone,
     Theme: Catalog,
-    Renderer: text::Renderer,
+    Renderer: text::Renderer + svg::Renderer,
 {
     /// Creates a new [`TextInput`] with the given placeholder and
     /// its current value.
@@ -157,6 +99,7 @@ where
             on_input: None,
             on_paste: None,
             on_submit: None,
+            on_toggle_secure: None,
             icon: None,
             class: Theme::default(),
             last_status: None,
@@ -185,8 +128,25 @@ where
     }
 
     /// Converts the [`TextInput`] into a secure password input.
+    ///
+    /// Combine with [`TextInput::on_toggle_secure`] to show a visibility icon.
     pub fn secure(mut self, is_secure: bool) -> Self {
         self.is_secure = is_secure;
+        self
+    }
+
+    /// Sets the message produced when the visibility toggle icon is pressed.
+    ///
+    /// Toggle [`TextInput::secure`] in response to reveal or hide the contents.
+    pub fn on_toggle_secure(mut self, on_toggle_secure: Message) -> Self {
+        self.on_toggle_secure = Some(on_toggle_secure);
+        self
+    }
+
+    /// Sets the message that should be produced when the visibility toggle
+    /// icon of the [`TextInput`] is pressed, if `Some`.
+    pub fn on_toggle_secure_maybe(mut self, on_toggle_secure: Option<Message>) -> Self {
+        self.on_toggle_secure = on_toggle_secure;
         self
     }
 
@@ -297,6 +257,23 @@ where
         self
     }
 
+    fn eye_bounds(&self, layout: Layout<'_>) -> Option<Rectangle> {
+        self.on_toggle_secure.as_ref()?;
+
+        let mut children = layout.children();
+        children.next()?;
+
+        if self.icon.is_some() {
+            children.next()?;
+        }
+
+        if self.label_text.is_some() {
+            children.next()?;
+        }
+
+        children.next().map(|eye| eye.bounds())
+    }
+
     /// Lays out the [`TextInput`], overriding its [`Value`] if provided.
     ///
     /// [`Renderer`]: text::Renderer
@@ -340,7 +317,15 @@ where
             ..placeholder_text
         });
 
-        let mut children = if let Some(icon) = &self.icon {
+        let eye_size = EYE_ICON_SIZE.min(text_bounds.height + padding.top + padding.bottom);
+        let has_eye = self.on_toggle_secure.is_some();
+        let eye_reserved = if has_eye {
+            eye_size + EYE_ICON_SPACING
+        } else {
+            0.0
+        };
+
+        let icon_width = if let Some(icon) = &self.icon {
             let mut content = [0; 4];
 
             let icon_text = Text {
@@ -357,30 +342,71 @@ where
 
             let _ = state.icon.update(icon_text);
 
-            let icon_width = state.icon.min_width();
-
-            let (text_position, icon_position) = match icon.side {
-                Side::Left => (
-                    Point::new(padding.left + icon_width + icon.spacing, padding.top),
-                    Point::new(padding.left, padding.top),
-                ),
-                Side::Right => (
-                    Point::new(padding.left, padding.top),
-                    Point::new(padding.left + text_bounds.width - icon_width, padding.top),
-                ),
-            };
-
-            let text_node =
-                layout::Node::new(text_bounds - Size::new(icon_width + icon.spacing, 0.0))
-                    .move_to(text_position);
-
-            let icon_node =
-                layout::Node::new(Size::new(icon_width, text_bounds.height)).move_to(icon_position);
-
-            vec![text_node, icon_node]
+            Some(state.icon.min_width())
         } else {
-            vec![layout::Node::new(text_bounds).move_to(Point::new(padding.left, padding.top))]
+            None
         };
+
+        let mut text_position = Point::new(padding.left, padding.top);
+        let mut text_width = text_bounds.width;
+        let mut children = Vec::with_capacity(4);
+
+        let left_icon_node = match (&self.icon, icon_width) {
+            (Some(icon), Some(icon_width)) if matches!(icon.side, Side::Left) => {
+                text_width -= icon_width + icon.spacing;
+                text_position.x += icon_width + icon.spacing;
+
+                Some(
+                    layout::Node::new(Size::new(icon_width, text_bounds.height))
+                        .move_to(Point::new(padding.left, padding.top)),
+                )
+            }
+            _ => None,
+        };
+
+        let right_icon_node = match (&self.icon, icon_width) {
+            (Some(icon), Some(icon_width)) if matches!(icon.side, Side::Right) => {
+                text_width -= icon_width + icon.spacing;
+
+                Some(
+                    layout::Node::new(Size::new(icon_width, text_bounds.height)).move_to(
+                        Point::new(
+                            padding.left + text_bounds.width - icon_width - eye_reserved,
+                            padding.top,
+                        ),
+                    ),
+                )
+            }
+            _ => None,
+        };
+
+        let eye_node = if has_eye {
+            text_width -= eye_reserved;
+
+            let eye_y = padding.top + (text_bounds.height - eye_size) / 2.0;
+
+            Some(
+                layout::Node::new(Size::new(eye_size, eye_size)).move_to(Point::new(
+                    padding.left + text_bounds.width - eye_size,
+                    eye_y,
+                )),
+            )
+        } else {
+            None
+        };
+
+        children.push(
+            layout::Node::new(Size::new(text_width.max(0.0), text_bounds.height))
+                .move_to(text_position),
+        );
+
+        if let Some(icon_node) = left_icon_node {
+            children.push(icon_node);
+        }
+
+        if let Some(icon_node) = right_icon_node {
+            children.push(icon_node);
+        }
 
         if let Some(label_text) = self.label_text {
             let text = Text {
@@ -397,6 +423,10 @@ where
             let _ = state.label.update(text);
             let label_bounds = state.label.min_bounds();
             children.push(layout::Node::new(label_bounds).move_to(LABEL_TEXT_OFFSET));
+        }
+
+        if let Some(eye_node) = eye_node {
+            children.push(eye_node);
         }
 
         layout::Node::with_children(text_bounds.expand(padding), children)
@@ -506,46 +536,6 @@ where
             Color::TRANSPARENT,
         );
 
-        if let Some(Status::Focused { is_hovered: _ }) = self.last_status
-            && let Some(label_text) = self.label_text
-        {
-            let label_bounds = children_layout.next().unwrap().bounds();
-
-            renderer.fill_quad(
-                renderer::Quad {
-                    bounds: Rectangle {
-                        height: BORDER_WIDTH,
-                        width: label_bounds.width + 2.0 * LABEL_BACKGROUND_PADDING,
-                        x: label_bounds.x - LABEL_BACKGROUND_PADDING,
-                        y: label_bounds.y - LABEL_TEXT_OFFSET.y,
-                    },
-                    ..Default::default()
-                },
-                self.background_color.unwrap(),
-            );
-
-            renderer.fill_text(
-                Text {
-                    font: self.font.unwrap_or_else(|| renderer.default_font()),
-                    line_height: self.line_height,
-                    content: label_text.to_string(),
-                    bounds: Size::new(f32::INFINITY, LABEL_TEXT_SIZE.into()),
-                    size: LABEL_TEXT_SIZE,
-                    align_x: text::Alignment::Default,
-                    align_y: alignment::Vertical::Center,
-                    shaping: text::Shaping::Advanced,
-                    wrapping: text::Wrapping::default(),
-                },
-                label_bounds.position(),
-                if self.error {
-                    self.theme.error()
-                } else {
-                    self.theme.primary()
-                },
-                *viewport,
-            );
-        }
-
         if self.icon.is_some() {
             let icon_layout = children_layout.next().unwrap();
 
@@ -561,6 +551,88 @@ where
                 style.icon,
                 *viewport,
             );
+        }
+
+        if self.label_text.is_some() {
+            let label_bounds = children_layout.next().unwrap().bounds();
+
+            if let Some(Status::Focused { is_hovered: _ }) = self.last_status {
+                renderer.fill_quad(
+                    renderer::Quad {
+                        bounds: Rectangle {
+                            height: BORDER_WIDTH,
+                            width: label_bounds.width + 2.0 * LABEL_BACKGROUND_PADDING,
+                            x: label_bounds.x - LABEL_BACKGROUND_PADDING,
+                            y: label_bounds.y - LABEL_TEXT_OFFSET.y,
+                        },
+                        ..Default::default()
+                    },
+                    self.background_color.unwrap(),
+                );
+
+                renderer.fill_text(
+                    Text {
+                        font: self.font.unwrap_or_else(|| renderer.default_font()),
+                        line_height: self.line_height,
+                        content: self.label_text.unwrap_or_default().to_string(),
+                        bounds: Size::new(f32::INFINITY, LABEL_TEXT_SIZE.into()),
+                        size: LABEL_TEXT_SIZE,
+                        align_x: text::Alignment::Default,
+                        align_y: alignment::Vertical::Center,
+                        shaping: text::Shaping::Advanced,
+                        wrapping: text::Wrapping::default(),
+                    },
+                    label_bounds.position(),
+                    if self.error {
+                        self.theme.error()
+                    } else {
+                        self.theme.primary()
+                    },
+                    *viewport,
+                );
+            }
+        }
+
+        if self.on_toggle_secure.is_some() {
+            let eye_bounds = children_layout.next().unwrap().bounds();
+
+            let eye_progress = state
+                .eye_spring
+                .as_ref()
+                .map(|spring| spring.value().clamp(0.0, 1.0))
+                .unwrap_or(if self.is_secure { 0.0 } else { 1.0 });
+
+            let eye_color = if is_disabled {
+                style.icon.scale_alpha(DIM_ALPHA)
+            } else {
+                style.icon
+            };
+
+            if eye_progress < 0.999 {
+                renderer.draw_svg(
+                    svg::Svg {
+                        handle: common_icons::VISIBILITY_OFF.clone(),
+                        color: Some(eye_color),
+                        rotation: Radians(0.0),
+                        opacity: 1.0 - eye_progress,
+                    },
+                    eye_bounds,
+                    eye_bounds,
+                );
+            }
+
+            if eye_progress > 0.001 {
+                renderer.draw_svg(
+                    svg::Svg {
+                        handle: common_icons::VISIBILITY.clone(),
+                        color: Some(eye_color),
+                        rotation: Radians(0.0),
+                        opacity: eye_progress,
+                    },
+                    eye_bounds,
+                    eye_bounds,
+                );
+            }
         }
 
         let text = value.to_string();
@@ -702,14 +774,27 @@ impl<Message, Theme, Renderer> Widget<Message, Theme, Renderer>
 where
     Message: Clone,
     Theme: Catalog,
-    Renderer: text::Renderer,
+    Renderer: text::Renderer + svg::Renderer,
 {
     fn tag(&self) -> tree::Tag {
         tree::Tag::of::<State<Renderer::Paragraph>>()
     }
 
     fn state(&self) -> tree::State {
-        tree::State::new(State::<Renderer::Paragraph>::new())
+        let mut state = State::<Renderer::Paragraph>::new();
+
+        if self.on_toggle_secure.is_some() {
+            let now = Instant::now();
+            let value = if self.is_secure { 0.0 } else { 1.0 };
+
+            state.eye_spring = Some(SpringValue::new(
+                value,
+                motion::fast_effects(motion::Scheme::default()),
+                now,
+            ));
+        }
+
+        tree::State::new(state)
     }
 
     fn diff(&self, tree: &mut Tree) {
@@ -718,6 +803,17 @@ where
         // Stop pasting if input becomes disabled
         if self.on_input.is_none() {
             state.is_pasting = None;
+        }
+
+        if state.eye_spring.is_none() && self.on_toggle_secure.is_some() {
+            let now = Instant::now();
+            let value = if self.is_secure { 0.0 } else { 1.0 };
+
+            state.eye_spring = Some(SpringValue::new(
+                value,
+                motion::fast_effects(motion::Scheme::default()),
+                now,
+            ));
         }
     }
 
@@ -761,6 +857,21 @@ where
         shell: &mut Shell<'_, Message>,
         _viewport: &Rectangle,
     ) {
+        {
+            let now = Instant::now();
+            let state = state::<Renderer>(tree);
+
+            if let Some(spring) = &mut state.eye_spring {
+                let target = if self.is_secure { 0.0 } else { 1.0 };
+                spring.set_target(target, now);
+                spring.step(now);
+
+                if !spring.is_at_rest() {
+                    shell.request_redraw();
+                }
+            }
+        }
+
         let update_cache = |state, value| {
             replace_paragraph(
                 renderer,
@@ -777,6 +888,19 @@ where
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
             | Event::Touch(touch::Event::FingerPressed { .. }) => {
                 let state = state::<Renderer>(tree);
+
+                if self
+                    .eye_bounds(layout)
+                    .is_some_and(|eye_bounds| cursor.is_over(eye_bounds))
+                {
+                    if let Some(message) = self.on_toggle_secure.clone() {
+                        shell.publish(message);
+                    }
+
+                    shell.capture_event();
+                    return;
+                }
+
                 let cursor_before = state.cursor;
 
                 let click_position = cursor.position_over(layout.bounds());
@@ -1394,6 +1518,13 @@ where
         _viewport: &Rectangle,
         _renderer: &Renderer,
     ) -> mouse::Interaction {
+        if self
+            .eye_bounds(layout)
+            .is_some_and(|eye_bounds| cursor.is_over(eye_bounds))
+        {
+            return mouse::Interaction::Pointer;
+        }
+
         if cursor.is_over(layout.bounds()) {
             if self.on_input.is_none() {
                 mouse::Interaction::Idle
@@ -1411,7 +1542,7 @@ impl<'a, Message, Theme, Renderer> From<TextInput<'a, Message, Theme, Renderer>>
 where
     Message: Clone + 'a,
     Theme: Catalog + 'a,
-    Renderer: text::Renderer + 'a,
+    Renderer: text::Renderer + svg::Renderer + 'a,
 {
     fn from(
         text_input: TextInput<'a, Message, Theme, Renderer>,
@@ -1458,6 +1589,7 @@ pub struct State<P: text::Paragraph> {
     last_click: Option<mouse::Click>,
     cursor: Cursor,
     keyboard_modifiers: keyboard::Modifiers,
+    eye_spring: Option<SpringValue<f32>>,
     // TODO: Add stateful horizontal scrolling offset
 }
 

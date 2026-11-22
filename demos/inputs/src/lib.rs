@@ -10,6 +10,7 @@ use iced_m3::widget::{button, text_input::TextInput};
 pub enum Message {
     TextInputChanged(String),
     SecureInputChanged(String),
+    SecureVisibilityToggled,
     TextInputErrorToggle,
     TextInputSubmitted,
     TextInputWithIconChanged(String),
@@ -20,6 +21,7 @@ pub enum Message {
 pub struct Page {
     text_input_value: String,
     secure_text_input_value: String,
+    secure_visibility: bool,
     text_input_error: bool,
     text_input_submitted: String,
     text_input_with_icon: String,
@@ -32,6 +34,7 @@ impl Default for Page {
         Self {
             text_input_value: String::new(),
             secure_text_input_value: String::new(),
+            secure_visibility: false,
             text_input_error: false,
             text_input_submitted: String::new(),
             text_input_with_icon: String::new(),
@@ -46,6 +49,7 @@ impl Page {
         match message {
             Message::TextInputChanged(value) => self.text_input_value = value,
             Message::SecureInputChanged(value) => self.secure_text_input_value = value,
+            Message::SecureVisibilityToggled => self.secure_visibility = !self.secure_visibility,
             Message::TextInputErrorToggle => self.text_input_error = !self.text_input_error,
             Message::TextInputSubmitted => {
                 self.text_input_submitted = self.text_input_value.clone();
@@ -69,7 +73,8 @@ impl Page {
             section_header("Secure Input", theme),
             TextInput::new("Password...", &self.secure_text_input_value, theme)
                 .on_input(Message::SecureInputChanged)
-                .secure(true)
+                .secure(!self.secure_visibility)
+                .on_toggle_secure(Message::SecureVisibilityToggled)
                 .width(300.0),
             section_header("Error Input", theme),
             row![

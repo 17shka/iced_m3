@@ -40,6 +40,24 @@ impl Page {
             ]
             .spacing(16)
             .align_y(Alignment::Center),
+            text("Circular spinner")
+                .font(fonts::text_bold())
+                .size(18.0)
+                .color(theme.on_surface()),
+            row![
+                iced_m3::widget::circular_loading_indicator(
+                    iced_m3::widget::loading_indicator::Style::contained(theme)
+                ),
+                iced_m3::widget::circular_loading_indicator(
+                    iced_m3::widget::loading_indicator::Style::uncontained(theme)
+                ),
+                iced_m3::widget::circular_loading_indicator(
+                    iced_m3::widget::loading_indicator::Style::uncontained(theme)
+                )
+                .size(24.0),
+            ]
+            .spacing(16)
+            .align_y(Alignment::Center),
         ]
         .spacing(24)
         .into()

@@ -25,3 +25,11 @@ pub(crate) static ADD: LazyLock<svg::Handle> =
 const ARROW_RIGHT_BYTES: &[u8] = include_bytes!("../../resources/svg/arrow_right.svg");
 pub(crate) static ARROW_RIGHT: LazyLock<svg::Handle> =
     LazyLock::new(|| svg::Handle::from_memory(ARROW_RIGHT_BYTES));
+
+const VISIBILITY_BYTES: &[u8] = include_bytes!("../../resources/svg/visibility.svg");
+pub(crate) static VISIBILITY: LazyLock<svg::Handle> =
+    LazyLock::new(|| svg::Handle::from_memory(VISIBILITY_BYTES));
+
+const VISIBILITY_OFF_BYTES: &[u8] = include_bytes!("../../resources/svg/visibility_off.svg");
+pub(crate) static VISIBILITY_OFF: LazyLock<svg::Handle> =
+    LazyLock::new(|| svg::Handle::from_memory(VISIBILITY_OFF_BYTES));
