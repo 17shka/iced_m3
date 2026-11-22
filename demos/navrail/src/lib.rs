@@ -125,6 +125,7 @@ impl Page {
             },
             label: "Edit".into(),
             style: iced_m3::widget::fab::Style::fab_tonal(theme, Accent::Primary),
+            label_size_scale: 1.0,
             on_press: Action::Direct(Message::Noop),
         };
 

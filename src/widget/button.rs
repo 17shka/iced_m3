@@ -960,24 +960,28 @@ where
             Node::new(iced::Size::new(icon_size.0, icon_size.0))
         });
 
-        let paragraph = self.content.get_label().map(|label| {
-            <Renderer as iced::advanced::text::Renderer>::Paragraph::with_text(
-                iced::advanced::text::Text {
-                    content: label,
-                    bounds: shrinked_limits.max(),
-                    size: self.size.label_size,
-                    line_height: text::LineHeight::Relative(1.0),
-                    font: self
-                        .label_font
-                        .map(Renderer::Font::from)
-                        .unwrap_or_else(|| renderer.default_font()),
-                    shaping: text::Shaping::Advanced,
-                    wrapping: text::Wrapping::None,
-                    align_x: text::Alignment::Left,
-                    align_y: iced::alignment::Vertical::Top,
-                },
-            )
-        });
+        let paragraph = if self.size.label_size.0 > 0.0 {
+            self.content.get_label().map(|label| {
+                <Renderer as iced::advanced::text::Renderer>::Paragraph::with_text(
+                    iced::advanced::text::Text {
+                        content: label,
+                        bounds: shrinked_limits.max(),
+                        size: self.size.label_size,
+                        line_height: text::LineHeight::Relative(1.0),
+                        font: self
+                            .label_font
+                            .map(Renderer::Font::from)
+                            .unwrap_or_else(|| renderer.default_font()),
+                        shaping: text::Shaping::Advanced,
+                        wrapping: text::Wrapping::None,
+                        align_x: text::Alignment::Left,
+                        align_y: iced::alignment::Vertical::Top,
+                    },
+                )
+            })
+        } else {
+            None
+        };
 
         let label_node = paragraph
             .as_ref()

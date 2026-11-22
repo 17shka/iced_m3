@@ -384,8 +384,20 @@ where
             let node = badge
                 .as_widget_mut()
                 .layout(&mut tree.children[0], renderer, limits);
-            let height = node.bounds().height;
-            node.move_to(Point::new(icon_x, icon_y + ICON_SIZE - height))
+            let has_label = self
+                .content
+                .badge
+                .as_ref()
+                .is_some_and(|badge| badge.label.is_some());
+            let badge_x_offset = if has_label { 8.0 } else { 14.0 };
+            let large_label_end = large_label_node.bounds().x + large_bounds.width;
+            let expanded_badge_x = large_label_end - badge_x_offset;
+            let badge_x = lerp(icon_x, expanded_badge_x, expansion).round();
+            let icon_center_y = icon_y + ICON_SIZE / 2.0;
+            let label_center_y = large_label_node.bounds().y + large_bounds.height / 2.0;
+            let expanded_badge_y = label_center_y - if has_label { 8.0 } else { 12.0 };
+            let badge_y = lerp(icon_center_y - 12.0, expanded_badge_y, expansion).round();
+            node.move_to(Point::new(badge_x, badge_y))
         });
 
         let mut children = vec![

@@ -287,7 +287,7 @@ where
                 iced::advanced::renderer::Quad {
                     bounds: Rectangle {
                         x: bounds.x + bounds.width - size,
-                        y: bounds.y,
+                        y: bounds.y + (bounds.height - size) / 2.0,
                         width: size,
                         height: size,
                     },

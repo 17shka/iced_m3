@@ -5,14 +5,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use iced::{Color, Element, Radians, Size, Vector};
+use iced::{Color, Element, Pixels, Radians, Size, Vector};
 use iced_widget::{
     Canvas,
     canvas::{self, Fill},
-};
-use polymorpher::{
-    Morph,
-    shapes::{cookie4, cookie9, oval, pentagon, pill, soft_burst, sunny},
 };
 
 use crate::{
@@ -22,14 +18,25 @@ use crate::{
 pub(crate) mod constants {
     use std::sync::LazyLock;
 
-    use polymorpher::shapes::{cookie4, cookie9, oval, pentagon, pill, soft_burst, sunny};
+    use iced::Pixels;
+    use polymorpher::{
+        Morph, RoundedPolygon,
+        shapes::{cookie4, cookie9, oval, pentagon, pill, soft_burst, sunny},
+    };
 
-    pub const CONTAINER_SIZE: f32 = 48.0;
-    pub const INDICATOR_SIZE: f32 = 38.0;
+    use crate::animation::motion::Spring;
+
+    pub const DEFAULT_CONTAINER_SIZE: Pixels = Pixels(48.0);
+    pub const DEFAULT_INDICATOR_SIZE: Pixels = Pixels(38.0);
     pub const LINEAR_ROTATION_CYCLE_SECONDS: f32 = 4.666;
     pub const MORPH_CYCLE_SECONDS: f32 = 0.650;
-    pub static INDICATOR_SCALING_FACTOR: LazyLock<f32> = LazyLock::new(|| {
-        let polygons = [
+    // The Compose reference morphs with `spring(dampingRatio = 0.6, stiffness =
+    // 200, visibilityThreshold = 0.1)`, hardcoded and independent from the
+    // motion scheme. The threshold just ends the spring early; the morph
+    // cycle clock plays the same role here.
+    pub const MORPH_SPRING: Spring = Spring::new(0.6, 200.0);
+    pub static CYCLE_POLYGONS: LazyLock<[RoundedPolygon; 7]> = LazyLock::new(|| {
+        [
             soft_burst(),
             cookie9(),
             pentagon(),
@@ -37,9 +44,22 @@ pub(crate) mod constants {
             sunny(),
             cookie4(),
             oval(),
-        ];
+        ]
+    });
+    pub static MORPHS: LazyLock<[Morph; 7]> = LazyLock::new(|| {
+        [
+            Morph::new(soft_burst(), cookie9()),
+            Morph::new(cookie9(), pentagon()),
+            Morph::new(pentagon(), pill()),
+            Morph::new(pill(), sunny()),
+            Morph::new(sunny(), cookie4()),
+            Morph::new(cookie4(), oval()),
+            Morph::new(oval(), soft_burst()),
+        ]
+    });
+    pub static INDICATOR_SCALING_FACTOR: LazyLock<f32> = LazyLock::new(|| {
         let mut factor = f32::MAX;
-        for polygon in polygons {
+        for polygon in &*CYCLE_POLYGONS {
             let bounds = polygon.aabb(false).max;
             factor = factor.min(bounds.x.min(bounds.y));
         }
@@ -80,12 +100,22 @@ impl Style {
 /// Loading indicators show the progress of a process for a short wait time
 pub struct LoadingIndicator {
     style: Style,
+    size: Pixels,
 }
 
 impl LoadingIndicator {
     #[must_use]
     pub fn new(style: Style) -> Self {
-        Self { style }
+        Self {
+            style,
+            size: constants::DEFAULT_CONTAINER_SIZE,
+        }
+    }
+
+    #[must_use]
+    pub fn size(mut self, size: impl Into<Pixels>) -> Self {
+        self.size = size.into();
+        self
     }
 }
 
@@ -93,7 +123,6 @@ pub struct State {
     start: Instant,
     last_cycle: Duration,
     spring: SimulatedSpring,
-    morphs: [Morph; 7],
 }
 
 impl Default for State {
@@ -102,20 +131,8 @@ impl Default for State {
 
         Self {
             start: Instant::now(),
-            spring: SimulatedSpring::new(
-                crate::animation::motion::constants::FAST_SPATIAL_EXPRESSIVE,
-                now,
-            ),
+            spring: SimulatedSpring::new(constants::MORPH_SPRING, now),
             last_cycle: Duration::default(),
-            morphs: [
-                Morph::new(soft_burst(), cookie9()),
-                Morph::new(cookie9(), pentagon()),
-                Morph::new(pentagon(), pill()),
-                Morph::new(pill(), sunny()),
-                Morph::new(sunny(), cookie4()),
-                Morph::new(cookie4(), oval()),
-                Morph::new(oval(), soft_burst()),
-            ],
         }
     }
 }
@@ -145,29 +162,35 @@ where
         };
 
         if let Some(color) = container_color {
-            let radius = constants::CONTAINER_SIZE / 2.0;
+            let radius = self.size.0 / 2.0;
             let circle = canvas::Path::circle(frame.center(), radius);
             frame.fill(&circle, color);
         }
 
-        let size = constants::INDICATOR_SIZE;
-        let offset = Vector::new((frame.width() - size) / 2.0, (frame.height() - size) / 2.0);
-        let half = size / 2.0;
+        let indicator_size = (self.size.0 / constants::DEFAULT_CONTAINER_SIZE.0)
+            * constants::DEFAULT_INDICATOR_SIZE.0;
+        let offset = Vector::new(
+            (frame.width() - indicator_size) / 2.0,
+            (frame.height() - indicator_size) / 2.0,
+        );
+        let half = indicator_size / 2.0;
 
-        let current_morph = &state.morphs[(state.last_cycle.as_secs_f32()
-            / constants::MORPH_CYCLE_SECONDS) as usize
-            % state.morphs.len()];
+        let current_morph = &constants::MORPHS[(state.last_cycle.as_secs_f32()
+            / constants::MORPH_CYCLE_SECONDS)
+            as usize
+            % constants::MORPHS.len()];
 
         let path = cubics_to_iced_path(
             &current_morph.as_cubics(state.spring.position),
-            Size::new(constants::INDICATOR_SIZE, constants::INDICATOR_SIZE),
+            Size::new(indicator_size, indicator_size),
         );
 
         let elapsed = Instant::now().duration_since(state.start).as_secs_f32();
+        let morph_turns =
+            (state.last_cycle.as_secs_f32() / constants::MORPH_CYCLE_SECONDS + 1.0) % 4.0;
         let angle = Radians(
             elapsed * std::f32::consts::TAU / constants::LINEAR_ROTATION_CYCLE_SECONDS
-                + PI / 4.0 * state.spring.position
-                + PI / 4.0 * state.last_cycle.as_secs_f32() / constants::MORPH_CYCLE_SECONDS,
+                + PI / 2.0 * (state.spring.position + morph_turns),
         );
 
         frame.translate(Vector::new(offset.x + half, offset.y + half));
@@ -213,10 +236,7 @@ where
     Renderer: 'a + iced_widget::renderer::geometry::Renderer,
 {
     fn from(value: LoadingIndicator) -> Self {
-        Element::new(
-            Canvas::new(value)
-                .width(constants::CONTAINER_SIZE)
-                .height(constants::CONTAINER_SIZE),
-        )
+        let size = value.size.0;
+        Element::new(Canvas::new(value).width(size).height(size))
     }
 }

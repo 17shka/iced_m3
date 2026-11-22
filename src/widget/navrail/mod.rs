@@ -62,7 +62,29 @@ where
     pub icon: Icon<'a>,
     pub label: text::Fragment<'a>,
     pub style: crate::widget::fab::Style,
+    pub label_size_scale: f32,
     pub on_press: Action<'a, Message>,
+}
+
+impl<'a, Message: Clone> Clone for Fab<'a, Message> {
+    fn clone(&self) -> Self {
+        Self {
+            icon: self.icon.clone(),
+            label: self.label.clone(),
+            style: self.style,
+            label_size_scale: self.label_size_scale,
+            on_press: match &self.on_press {
+                Action::Direct(msg) => Action::Direct(msg.clone()),
+                Action::Closure(_) => panic!("Fab::clone() does not support Action::Closure"),
+            },
+        }
+    }
+}
+
+impl<'a, Message: Clone> Fab<'a, Message> {
+    pub fn set_label_size_scale(&mut self, scale: f32) {
+        self.label_size_scale = scale;
+    }
 }
 
 #[derive(Default, Clone, Copy, PartialEq, PartialOrd)]
@@ -159,6 +181,7 @@ where
     expand_spring: Option<Spring>,
     hide_labels_when_collapsed: bool,
     menu_visible: bool,
+    fab_visible: bool,
     scrollbar_color: Option<Color>,
 
     menu_button: Option<Element<'a, Message, Theme, Renderer>>,
@@ -193,6 +216,7 @@ where
             expand_spring: None,
             hide_labels_when_collapsed: false,
             menu_visible: true,
+            fab_visible: true,
             scrollbar_color: None,
             menu_button: None,
             fab_element: None,
@@ -248,8 +272,23 @@ where
     }
 
     #[must_use]
+    pub fn fab_label_size_scale(mut self, scale: f32) -> Self {
+        if let Some(fab) = &mut self.fab {
+            fab.label_size_scale = scale;
+        }
+        self
+    }
+
+    #[must_use]
     pub fn fab_maybe(mut self, maybe_fab: Option<Fab<'a, Message>>) -> Self {
         self.fab = maybe_fab;
+        self
+    }
+
+    /// Shows or hides the FAB immediately while keeping it configured on the rail.
+    #[must_use]
+    pub fn fab_visible(mut self, visible: bool) -> Self {
+        self.fab_visible = visible;
         self
     }
 
@@ -378,7 +417,6 @@ struct State {
     width: SpringValue<f32>,
     /// Normalized expansion progress: 0 = collapsed, 1 = expanded
     expansion: SpringValue<f32>,
-    menu_visible: SpringValue<f32>,
 }
 
 impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer>
@@ -403,16 +441,12 @@ where
             .unwrap_or_else(|| default_spatial(motion::Scheme::default()));
         let width = self.mode.width().0;
         let expansion = self.mode_is_expanded() as usize as f32;
-        let menu_visible_initial =
-            (self.menu_button.is_some() && self.menu_visible) as usize as f32;
         let mut state = State {
             width: SpringValue::new(width, spring, now),
             expansion: SpringValue::new(expansion, spring, now),
-            menu_visible: SpringValue::new(menu_visible_initial, spring, now),
         };
         state.width.reset(width, now);
         state.expansion.reset(expansion, now);
-        state.menu_visible.reset(menu_visible_initial, now);
 
         iced::advanced::widget::tree::State::new(state)
     }
@@ -426,15 +460,11 @@ where
         {
             state.width.spring.model = spring;
             state.expansion.spring.model = spring;
-            state.menu_visible.spring.model = spring;
         }
         state
             .expansion
             .set_target(self.mode_is_expanded() as usize as f32, now);
-        state.menu_visible.set_target(
-            (self.menu_button.is_some() && self.menu_visible) as usize as f32,
-            now,
-        );
+
         // For ExpandedAuto the real width target is computed in layout() from
         // measured item widths. Setting it here to mode.width() (220.0) and
         // then overriding it in layout() causes the spring to be reset twice
@@ -534,7 +564,7 @@ where
         let rail_state = tree.state.downcast_mut::<State>();
         let collapsed_width = constants::CONTAINER_COLLAPSED_WIDTH;
         let expansion = rail_state.expansion.value().clamp(0.0, 1.0);
-        let menu_visible = rail_state.menu_visible.value().clamp(0.0, 1.0);
+        let fab_visibility = (self.fab_element.is_some() && self.fab_visible) as usize as f32;
 
         // Pre-layout pass to determine content width for ExpandedAuto
         let effective_target = match self.mode {
@@ -597,19 +627,19 @@ where
         }
         .translate(Vector::new(MENU_OFFSET, offset));
         let menu_natural_height = menu_layout.bounds().height;
-        let menu_effective_height = if self.menu_button.is_some() {
-            menu_natural_height * menu_visible
+        let menu_effective_height = if self.menu_button.is_some() && self.menu_visible {
+            menu_natural_height
         } else {
             0.0
         };
         children.push(menu_layout);
         tree_index += 1;
         offset += menu_effective_height;
-        if self.menu_button.is_some() && menu_visible > 0.001 {
+        if self.menu_button.is_some() && self.menu_visible {
             offset += match self.fab_element.is_some() {
                 true => MENU_SECTION_SPACE,
                 false => ITEMS_SECTION_SPACE,
-            } * menu_visible;
+            };
         }
         offset = offset.round();
 
@@ -631,7 +661,7 @@ where
         let fab_height = fab_layout.bounds().height;
         children.push(fab_layout);
         tree_index += 1;
-        if self.fab_element.is_some() {
+        if fab_visibility > 0.0 {
             offset += fab_height + ITEMS_SECTION_SPACE;
             offset = offset.round();
         }
@@ -655,10 +685,42 @@ where
 
             let item_limits =
                 iced::advanced::layout::Limits::new(Size::ZERO, Size::new(width, available_height));
+
+            // Measure total content height for item alignment
+            let mut content_height = 0.0;
+            for (index, content) in self.items.iter().enumerate() {
+                let active = index == self.active_index;
+                let mut item_element: Element<'a, Message, Theme, Renderer> = item::Item::new(
+                    self.style.item_style,
+                    content.clone(),
+                    self.mode.is_expanded(),
+                    self.label_font,
+                    active,
+                    self.hide_labels_when_collapsed,
+                )
+                .motion_scheme_maybe(self.motion_scheme)
+                .active_transition_spring_maybe(self.item_active_transition_spring)
+                .color_spring_maybe(self.item_color_spring)
+                .into();
+                let mut temp_tree = Tree::new(item_element.as_widget());
+                temp_tree.state.downcast_mut::<ItemState>().expansion = expansion;
+                let item_layout =
+                    item_element
+                        .as_widget_mut()
+                        .layout(&mut temp_tree, renderer, &item_limits);
+                content_height += item_layout.bounds().height;
+            }
+
+            let alignment_offset = match self.item_alignment {
+                ItemAlignment::Top => 0.0,
+                ItemAlignment::Center => ((available_height - content_height) / 2.0).max(0.0),
+                ItemAlignment::Bottom => (available_height - content_height).max(0.0),
+            };
+
             let scrollable_layout = container
                 .as_widget_mut()
                 .layout(scrollable_tree, renderer, &item_limits)
-                .translate(Vector::new(0.0, item_start_offset));
+                .translate(Vector::new(0.0, item_start_offset + alignment_offset));
             children.push(scrollable_layout);
         }
 
@@ -679,64 +741,39 @@ where
         viewport: &iced::Rectangle,
     ) {
         let mut layouts = layout.children();
-        let mut tree_index = 0;
         let container_vertical_padding = self
             .container_vertical_padding
             .unwrap_or(constants::CONTAINER_VERTICAL_PADDING);
-        let rail_state = tree.state.downcast_ref::<State>();
-        let menu_visible_v = rail_state.menu_visible.value().clamp(0.0, 1.0);
 
-        // Menu
+        // Collect all child layouts up front so we can control draw order.
         let menu_layout = layouts.next().unwrap();
-        if self.menu_button.is_some() {
-            if menu_visible_v > 0.001 {
-                let clip = Rectangle {
-                    x: menu_layout.bounds().x,
-                    y: menu_layout.bounds().y,
-                    width: menu_layout.bounds().width,
-                    height: menu_layout.bounds().height * menu_visible_v,
-                };
-                renderer.with_layer(clip, |renderer| {
-                    self.menu_button.as_ref().unwrap().as_widget().draw(
-                        &tree.children[0],
-                        renderer,
-                        theme,
-                        style,
-                        menu_layout,
-                        cursor,
-                        viewport,
-                    );
-                });
-            }
-        }
-        tree_index += 1;
-
-        // Fab
         let fab_layout = layouts.next().unwrap();
-        if self.fab_element.is_some() {
-            self.fab_element.as_ref().unwrap().as_widget().draw(
-                &tree.children[1],
+        let scrollable_layout = layouts.next().unwrap();
+
+        // Menu visibility changes immediately; no clipping animation is applied.
+        if self.menu_visible
+            && let Some(menu) = self.menu_button.as_ref()
+        {
+            menu.as_widget().draw(
+                &tree.children[0],
                 renderer,
                 theme,
                 style,
-                fab_layout,
+                menu_layout,
                 cursor,
                 viewport,
             );
         }
-        tree_index += 1;
 
-        // Items area starts right after the fab (or after the menu if no fab)
-        let fab_space = if self.fab_element.is_some() {
-            ITEMS_SECTION_SPACE
-        } else {
-            0.0
-        };
-        let start_y = fab_layout.bounds().y + fab_layout.bounds().height + fab_space;
+        // Items area follows the FAB only while it is visible.
+        let fab_visibility = (self.fab_element.is_some() && self.fab_visible) as usize as f32;
+        let start_y = fab_layout.bounds().y
+            + (fab_layout.bounds().height + ITEMS_SECTION_SPACE) * fab_visibility;
         let clip_height =
             (layout.bounds().y + layout.bounds().height - container_vertical_padding - start_y)
                 .max(0.0);
 
+        // Items
         if self.items_container.is_some() {
             let items_clip = Rectangle {
                 x: layout.bounds().x,
@@ -745,10 +782,9 @@ where
                 height: clip_height,
             };
 
-            let scrollable_layout = layouts.next().unwrap();
             renderer.with_layer(items_clip, |renderer| {
                 self.items_container.as_ref().unwrap().as_widget().draw(
-                    &tree.children[tree_index],
+                    &tree.children[2],
                     renderer,
                     theme,
                     style,
@@ -757,6 +793,23 @@ where
                     viewport,
                 );
             });
+        }
+
+        // Fab — drawn last so it is not affected by any clip state left over
+        // from the items `with_layer` operation (which can leak between frames
+        // and cause the Fab icon to disappear when ItemAlignment changes).
+        if self.fab_visible
+            && let Some(fab) = self.fab_element.as_ref()
+        {
+            fab.as_widget().draw(
+                &tree.children[1],
+                renderer,
+                theme,
+                style,
+                fab_layout,
+                cursor,
+                viewport,
+            );
         }
     }
 
@@ -770,55 +823,39 @@ where
     ) -> mouse::Interaction {
         let mut tree_index = 0;
         let mut layouts = layout.children();
-        let rail_state = tree.state.downcast_ref::<State>();
 
         // Menu
         let menu_layout = layouts.next().unwrap();
-        if self.menu_button.is_some() {
-            let menu_visible_v = rail_state.menu_visible.value().clamp(0.0, 1.0);
-            if menu_visible_v > 0.001 {
-                let visible_menu_bounds = Rectangle {
-                    x: menu_layout.bounds().x,
-                    y: menu_layout.bounds().y,
-                    width: menu_layout.bounds().width,
-                    height: menu_layout.bounds().height * menu_visible_v,
-                };
-                if cursor.is_over(visible_menu_bounds) {
-                    let interaction = self
-                        .menu_button
-                        .as_ref()
-                        .unwrap()
-                        .as_widget()
-                        .mouse_interaction(
-                            &tree.children[tree_index],
-                            menu_layout,
-                            cursor,
-                            viewport,
-                            renderer,
-                        );
-                    if interaction != mouse::Interaction::None {
-                        return interaction;
-                    }
-                }
+        if self.menu_visible
+            && let Some(menu) = self.menu_button.as_ref()
+            && cursor.is_over(menu_layout.bounds())
+        {
+            let interaction = menu.as_widget().mouse_interaction(
+                &tree.children[tree_index],
+                menu_layout,
+                cursor,
+                viewport,
+                renderer,
+            );
+            if interaction != mouse::Interaction::None {
+                return interaction;
             }
         }
         tree_index += 1;
 
         // Fab
         let fab_layout = layouts.next().unwrap();
-        if self.fab_element.is_some() {
-            let interaction = self
-                .fab_element
-                .as_ref()
-                .unwrap()
-                .as_widget()
-                .mouse_interaction(
-                    &tree.children[tree_index],
-                    fab_layout,
-                    cursor,
-                    viewport,
-                    renderer,
-                );
+        if self.fab_visible
+            && let Some(fab) = self.fab_element.as_ref()
+            && cursor.is_over(fab_layout.bounds())
+        {
+            let interaction = fab.as_widget().mouse_interaction(
+                &tree.children[tree_index],
+                fab_layout,
+                cursor,
+                viewport,
+                renderer,
+            );
             if interaction != mouse::Interaction::None {
                 return interaction;
             }
@@ -856,57 +893,55 @@ where
         let mut layouts = layout.children();
         let mut tree_index = 0;
 
-        // Menu
+        // Menu visibility changes immediately.
         let menu_layout = layouts.next().unwrap();
-        let menu_visible_v = tree
-            .state
-            .downcast_ref::<State>()
-            .menu_visible
-            .value()
-            .clamp(0.0, 1.0);
-        if let Some(menu) = &mut self.menu_button {
-            if menu_visible_v > 0.001 {
-                let visible_menu_bounds = Rectangle {
-                    x: menu_layout.bounds().x,
-                    y: menu_layout.bounds().y,
-                    width: menu_layout.bounds().width,
-                    height: menu_layout.bounds().height * menu_visible_v,
-                };
-                let should_forward = match event {
-                    iced::Event::Mouse(_) | iced::Event::Touch(_) => {
-                        cursor.is_over(visible_menu_bounds)
-                    }
-                    _ => true,
-                };
-                if should_forward {
-                    menu.as_widget_mut().update(
-                        &mut tree.children[tree_index],
-                        event,
-                        menu_layout,
-                        cursor,
-                        renderer,
-                        clipboard,
-                        shell,
-                        viewport,
-                    );
+        if self.menu_visible
+            && let Some(menu) = &mut self.menu_button
+        {
+            let should_forward = match event {
+                iced::Event::Mouse(_) | iced::Event::Touch(_) => {
+                    cursor.is_over(menu_layout.bounds())
                 }
+                _ => true,
+            };
+            if should_forward {
+                menu.as_widget_mut().update(
+                    &mut tree.children[tree_index],
+                    event,
+                    menu_layout,
+                    cursor,
+                    renderer,
+                    clipboard,
+                    shell,
+                    viewport,
+                );
             }
         }
         tree_index += 1;
 
-        // Fab
+        // FAB visibility changes immediately.
         let fab_layout = layouts.next().unwrap();
-        if let Some(fab) = &mut self.fab_element {
-            fab.as_widget_mut().update(
-                &mut tree.children[tree_index],
-                event,
-                fab_layout,
-                cursor,
-                renderer,
-                clipboard,
-                shell,
-                viewport,
-            );
+        if self.fab_visible
+            && let Some(fab) = &mut self.fab_element
+        {
+            let should_forward = match event {
+                iced::Event::Mouse(_) | iced::Event::Touch(_) => {
+                    cursor.is_over(fab_layout.bounds())
+                }
+                _ => true,
+            };
+            if should_forward {
+                fab.as_widget_mut().update(
+                    &mut tree.children[tree_index],
+                    event,
+                    fab_layout,
+                    cursor,
+                    renderer,
+                    clipboard,
+                    shell,
+                    viewport,
+                );
+            }
         }
         tree_index += 1;
 
@@ -937,17 +972,12 @@ where
         {
             state.width.spring.model = spring;
             state.expansion.spring.model = spring;
-            state.menu_visible.spring.model = spring;
         }
 
         state.width.step(now);
         state.expansion.step(now);
-        state.menu_visible.step(now);
 
-        if !state.width.is_at_rest()
-            || !state.expansion.is_at_rest()
-            || !state.menu_visible.is_at_rest()
-        {
+        if !state.width.is_at_rest() || !state.expansion.is_at_rest() {
             shell.request_redraw();
             shell.invalidate_layout();
         }
@@ -998,18 +1028,16 @@ where
             .into()
         });
 
-        let fab = std::mem::take(&mut value.fab);
-        value.fab_element = fab.map(|fab| {
-            let content = if value.mode.is_expanded() {
-                widget::fab::Content::Extended {
-                    icon: fab.icon,
-                    label: fab.label,
-                }
-            } else {
-                widget::fab::Content::Reguar { icon: fab.icon }
+        let initial_fab_scale = if value.mode_is_expanded() { 1.0 } else { 0.0 };
+        value.fab_element = value.fab.as_ref().map(|fab| {
+            let fab_clone = fab.clone();
+            let content = widget::fab::Content::Extended {
+                icon: fab_clone.icon,
+                label: fab_clone.label,
             };
 
-            widget::fab(fab.style, content, fab.on_press)
+            widget::fab(fab_clone.style, content, fab_clone.on_press)
+                .label_size_scale(initial_fab_scale)
                 .label_font_maybe(value.label_font)
                 .into()
         });
