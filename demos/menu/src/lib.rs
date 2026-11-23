@@ -1,3 +1,4 @@
+use common::section_header;
 use iced::{
     Element, Length, Pixels,
     widget::{column, text},
@@ -203,13 +204,6 @@ fn menu_icon(text: &str) -> Icon<'_> {
         text: text.into(),
         font: Some(fonts::icons_filled()),
     }
-}
-
-fn section_header<'a>(title: &'a str, theme: &Theme) -> text::Text<'a> {
-    text(title)
-        .font(fonts::text_bold())
-        .size(18.0)
-        .color(theme.on_surface())
 }
 
 common::demo!(Page, Message, "Menu Demo");

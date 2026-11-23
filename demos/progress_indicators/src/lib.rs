@@ -1,8 +1,9 @@
+use common::section_header;
 use iced::{
     Alignment, Element,
-    widget::{column, row, text},
+    widget::{column, row},
 };
-use iced_m3::theme::{Accent, ColorScheme, Theme};
+use iced_m3::theme::{Accent, Theme};
 use iced_m3::widget::{button, circular_loading_indicator, loading_indicator, progress_bar};
 
 #[derive(Clone)]
@@ -121,13 +122,6 @@ impl Page {
         .spacing(24)
         .into()
     }
-}
-
-fn section_header<'a>(title: &'a str, theme: &Theme) -> text::Text<'a> {
-    text(title)
-        .font(fonts::text_bold())
-        .size(18.0)
-        .color(theme.on_surface())
 }
 
 common::demo!(Page, Message, "Progress Indicators Demo");

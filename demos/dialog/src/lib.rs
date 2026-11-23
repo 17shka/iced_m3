@@ -1,3 +1,4 @@
+use common::section_header;
 use iced::{
     Element,
     widget::{column, row, stack, text},
@@ -12,12 +13,15 @@ pub enum Message {
     CloseDialog,
     ToggleCustom,
     CloseCustom,
+    ToggleFullscreen,
+    CloseFullscreen,
     SetSpeed(Speed),
 }
 
 pub struct Page {
     dialog_open: bool,
     dialog_custom_open: bool,
+    dialog_fullscreen_open: bool,
     speed: Speed,
 }
 
@@ -26,6 +30,7 @@ impl Default for Page {
         Self {
             dialog_open: false,
             dialog_custom_open: false,
+            dialog_fullscreen_open: false,
             speed: Speed::Default,
         }
     }
@@ -38,6 +43,8 @@ impl Page {
             Message::CloseDialog => self.dialog_open = false,
             Message::ToggleCustom => self.dialog_custom_open = !self.dialog_custom_open,
             Message::CloseCustom => self.dialog_custom_open = false,
+            Message::ToggleFullscreen => self.dialog_fullscreen_open = !self.dialog_fullscreen_open,
+            Message::CloseFullscreen => self.dialog_fullscreen_open = false,
             Message::SetSpeed(speed) => self.speed = speed,
         }
     }
@@ -67,6 +74,12 @@ impl Page {
                 button::Content::Label("Open custom dialog".into()),
             )
             .on_press(Message::ToggleCustom),
+            section_header("Fullscreen dialog", theme),
+            iced_m3::widget::button(
+                button::Style::filled(theme, Accent::Primary),
+                button::Content::Label("Open fullscreen dialog".into()),
+            )
+            .on_press(Message::ToggleFullscreen),
         ]
         .spacing(24);
 
@@ -108,7 +121,36 @@ impl Page {
         .open(self.dialog_custom_open)
         .speed(self.speed);
 
-        stack![content, dialog_element, custom_dialog_element].into()
+        // A fullscreen dialog covers the whole window, keeps its title in a
+        // header row and shows a close button on the right.
+        let fullscreen_dialog_element = dialog::Dialog::new(
+            dialog::Style::new(theme),
+            column![
+                text("This dialog covers the whole window.").color(theme.on_surface_variant()),
+                text("The close button in the header dismisses it.")
+                    .color(theme.on_surface_variant()),
+            ]
+            .spacing(12),
+            vec![dialog::Button {
+                on_press: Some(Message::CloseFullscreen),
+                label: "Done".into(),
+                style: button::Style::filled(theme, Accent::Primary),
+            }],
+        )
+        .title("Fullscreen Dialog")
+        .fullscreen(true)
+        .on_close(Message::CloseFullscreen)
+        .on_press_outside(Message::CloseFullscreen)
+        .open(self.dialog_fullscreen_open)
+        .speed(self.speed);
+
+        stack![
+            content,
+            dialog_element,
+            custom_dialog_element,
+            fullscreen_dialog_element
+        ]
+        .into()
     }
 }
 
@@ -127,13 +169,6 @@ fn speed_button<'a>(
     iced_m3::widget::button(style, button::Content::Label(label.into()))
         .on_press(Message::SetSpeed(speed))
         .into()
-}
-
-fn section_header<'a>(title: &'a str, theme: &Theme) -> text::Text<'a> {
-    text(title)
-        .font(fonts::text_bold())
-        .size(18.0)
-        .color(theme.on_surface())
 }
 
 common::demo!(Page, Message, "Dialog Demo");

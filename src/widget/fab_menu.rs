@@ -29,7 +29,11 @@ use crate::{
         common_icons,
         fab::{self},
         hybrid_icon::Icon,
-        internal::interaction::{self, PressUpdate},
+        internal::{
+            interaction::{self, PressUpdate},
+            motion::sync_style_spring,
+            placement,
+        },
         ripple::Ripple,
     },
 };
@@ -293,10 +297,8 @@ where
 
         let icon_size = size.icon_size();
         let icon_bounds = Size::new(icon_size.0, icon_size.0);
-        let icon_node = Node::new(icon_bounds).move_to(Point::new(
-            (container_bounds.width - icon_bounds.width) / 2.0,
-            (container_bounds.height - icon_bounds.height) / 2.0,
-        ));
+        let icon_node =
+            Node::new(icon_bounds).move_to(placement::centered_in(container_bounds, icon_bounds));
 
         Node::with_children(container_bounds, vec![icon_node])
     }
@@ -392,13 +394,14 @@ where
             ),
         };
 
-        if !self.style_checked && state.last_style != self.style {
-            state.style_spring.reset(style, now);
-            state.last_style = self.style;
-            self.style_checked = true;
-        } else {
-            state.style_spring.set_target(style, now);
-        }
+        sync_style_spring(
+            &mut state.style_spring,
+            &mut self.style_checked,
+            &mut state.last_style,
+            self.style,
+            style,
+            now,
+        );
         state.corner_radius_spring.set_target(corner_radius, now);
         state.icon_rotation_spring.set_target(icon_rotation, now);
         state

@@ -16,9 +16,12 @@ use crate::{
         Interpolable,
         motion::{self, Spring, SpringValue, fast_effects, fast_spatial},
     },
-    style::StateLayer,
+    style::{StateLayer, crossfade_color},
     theme::ColorScheme,
-    widget::ripple::{Ripple, StateLayerOverlay},
+    widget::{
+        internal::{geometry::centered_square, interaction, motion::sync_style_spring},
+        ripple::{Ripple, StateLayerOverlay},
+    },
 };
 
 const CHECKBOX_SIZE: f32 = 18.0;
@@ -28,6 +31,35 @@ const OUTLINE_WIDTH: f32 = 2.0;
 
 const STATE_LAYER_SIZE: f32 = 40.0;
 const DISABLED_OPACITY: f32 = 0.38;
+
+const DEFAULT_EFFECTS_SPRING: Spring = Spring::new(1.0, 1600.0);
+const DEFAULT_SPATIAL_SPRING: Spring = Spring::new(0.9, 1000.0);
+
+fn stroke_line<Renderer>(
+    frame: &mut canvas::Frame<Renderer>,
+    from: Point,
+    to: Point,
+    progress: f32,
+    color: Color,
+) where
+    Renderer: iced::advanced::graphics::geometry::Renderer,
+{
+    let progress = progress.clamp(0.0, 1.0);
+    if progress <= 0.0 {
+        return;
+    }
+
+    let end = Point::new(
+        from.x + (to.x - from.x) * progress,
+        from.y + (to.y - from.y) * progress,
+    );
+    let path = canvas::Path::line(from, end);
+    let stroke = canvas::Stroke::default()
+        .with_color(color)
+        .with_width(2.0)
+        .with_line_cap(canvas::LineCap::Round);
+    frame.stroke(&path, stroke);
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Value {
@@ -86,10 +118,10 @@ pub struct StateStyle {
 impl Interpolable for StateStyle {
     fn interpolate(self, other: Self, t: f32) -> Self {
         Self {
-            background_color: self.background_color.interpolate(other.background_color, t),
-            icon_color: self.icon_color.interpolate(other.icon_color, t),
+            background_color: crossfade_color(self.background_color, other.background_color, t),
+            icon_color: crossfade_color(self.icon_color, other.icon_color, t),
             outline_width: self.outline_width.interpolate(other.outline_width, t),
-            outline_color: self.outline_color.interpolate(other.outline_color, t),
+            outline_color: crossfade_color(self.outline_color, other.outline_color, t),
         }
     }
 }
@@ -257,18 +289,17 @@ struct State {
     ripple: Ripple,
     is_pressed: bool,
     check: SpringValue<f32>,
-    dash: SpringValue<f32>,
+    morph: SpringValue<f32>,
     style_spring: SpringValue<StateStyle>,
     last_effects_spring: Spring,
     last_spatial_spring: Spring,
     last_style: Style,
-    last_value: Value,
 }
 
 impl State {
     fn set_spatial_spring(&mut self, spatial: Spring) {
         self.check.spring.model = spatial;
-        self.dash.spring.model = spatial;
+        self.morph.spring.model = spatial;
     }
 
     fn set_effects_spring(&mut self, effects: Spring) {
@@ -289,28 +320,23 @@ where
         let enabled = self.on_toggle.is_some();
         let target_style = *self.style.state(self.value, enabled);
         let now = Instant::now();
-        let effects_spring = self
-            .effects_spring
-            .unwrap_or(fast_effects(motion::Scheme::default()));
-        let spatial_spring = self
-            .spatial_spring
-            .unwrap_or(fast_spatial(motion::Scheme::default()));
-        let (check, dash) = match self.value {
+        let effects_spring = self.effects_spring.unwrap_or(DEFAULT_EFFECTS_SPRING);
+        let spatial_spring = self.spatial_spring.unwrap_or(DEFAULT_SPATIAL_SPRING);
+        let (check, morph) = match self.value {
             Value::Unchecked => (0.0, 0.0),
             Value::Checked => (1.0, 0.0),
-            Value::Indeterminate => (0.0, 1.0),
+            Value::Indeterminate => (1.0, 1.0),
         };
 
         let state = State {
             ripple: Ripple::new(),
             is_pressed: false,
             check: SpringValue::new(check, spatial_spring, now),
-            dash: SpringValue::new(dash, spatial_spring, now),
+            morph: SpringValue::new(morph, spatial_spring, now),
             style_spring: SpringValue::new(target_style, effects_spring, now),
             last_effects_spring: effects_spring,
             last_spatial_spring: spatial_spring,
             last_style: self.style,
-            last_value: self.value,
         };
 
         iced::advanced::widget::tree::State::new(state)
@@ -346,12 +372,7 @@ where
         let style = state.style_spring.value();
         let bounds = layout.bounds();
 
-        let checkbox_bounds = Rectangle {
-            x: bounds.x + (TOUCH_TARGET_SIZE - CHECKBOX_SIZE) / 2.0,
-            y: bounds.y + (TOUCH_TARGET_SIZE - CHECKBOX_SIZE) / 2.0,
-            width: CHECKBOX_SIZE,
-            height: CHECKBOX_SIZE,
-        };
+        let checkbox_bounds = centered_square(bounds, CHECKBOX_SIZE);
 
         renderer.fill_quad(
             Quad {
@@ -365,103 +386,66 @@ where
             style.background_color,
         );
 
-        let check_val = state.check.value().max(0.0).min(1.0);
-        let dash_val = state.dash.value().max(0.0).min(1.0);
+        let check = state.check.value().clamp(0.0, 1.0);
+        let morph = state.morph.value().clamp(0.0, 1.0);
 
-        let has_icon = check_val > 0.05 || dash_val > 0.05;
-
-        if has_icon {
-            let enabled = self.on_toggle.is_some();
-            let icon_source = if state.last_value.is_selected() {
-                state.last_value
-            } else if self.value.is_selected() {
-                self.value
-            } else {
-                Value::Unchecked
-            };
-            let icon_color = self.style.state(icon_source, enabled).icon_color;
-
-            if icon_color.a > 0.0 {
-                let mut frame = canvas::Frame::new(&*renderer, checkbox_bounds.size());
-
-                let left_progress = (check_val * 2.0).clamp(0.0, 1.0);
-                if left_progress > 0.05 {
-                    let start = Point::new(3.62, 9.0);
-                    let end = Point::new(6.75, 12.13);
-                    let alpha = icon_color.a * left_progress;
-                    let color = Color {
-                        r: icon_color.r,
-                        g: icon_color.g,
-                        b: icon_color.b,
-                        a: alpha,
-                    };
-                    let current_end = Point::new(
-                        start.x + (end.x - start.x) * left_progress,
-                        start.y + (end.y - start.y) * left_progress,
-                    );
-                    let path = canvas::Path::line(start, current_end);
-                    let stroke = canvas::Stroke::default()
-                        .with_color(color)
-                        .with_width(2.0)
-                        .with_line_cap(canvas::LineCap::Round);
-                    frame.stroke(&path, stroke);
-                }
-
-                let right_progress = ((check_val - 0.5) * 2.0).clamp(0.0, 1.0);
-                if right_progress > 0.05 {
-                    let start = Point::new(6.75, 12.13);
-                    let end = Point::new(15.75, 5.25);
-                    let alpha = icon_color.a * right_progress;
-                    let color = Color {
-                        r: icon_color.r,
-                        g: icon_color.g,
-                        b: icon_color.b,
-                        a: alpha,
-                    };
-                    let current_end = Point::new(
-                        start.x + (end.x - start.x) * right_progress,
-                        start.y + (end.y - start.y) * right_progress,
-                    );
-                    let path = canvas::Path::line(start, current_end);
-                    let stroke = canvas::Stroke::default()
-                        .with_color(color)
-                        .with_width(2.0)
-                        .with_line_cap(canvas::LineCap::Round);
-                    frame.stroke(&path, stroke);
-                }
-
-                if dash_val > 0.05 {
-                    let start = Point::new(3.0, 9.0);
-                    let end = Point::new(15.0, 9.0);
-                    let alpha = icon_color.a * dash_val;
-                    let color = Color {
-                        r: icon_color.r,
-                        g: icon_color.g,
-                        b: icon_color.b,
-                        a: alpha,
-                    };
-                    let current_end = Point::new(
-                        start.x + (end.x - start.x) * dash_val,
-                        start.y + (end.y - start.y) * dash_val,
-                    );
-                    let path = canvas::Path::line(start, current_end);
-                    let stroke = canvas::Stroke::default()
-                        .with_color(color)
-                        .with_width(2.0)
-                        .with_line_cap(canvas::LineCap::Round);
-                    frame.stroke(&path, stroke);
-                }
-
-                let geometry = frame.into_geometry();
-
-                renderer.with_translation(
-                    Vector::new(checkbox_bounds.x, checkbox_bounds.y),
-                    |renderer| {
-                        renderer.draw_geometry(geometry);
-                    },
-                );
-            }
+        if check <= 0.0 {
+            return;
         }
+
+        // Keep the icon fully opaque while it is being drawn or erased, even
+        // as the fill itself fades. While the fill is retracting the value is
+        // already `Unchecked`, but checked and indeterminate icons share the
+        // same color, so falling back to `Checked` keeps the icon visible.
+        let enabled = self.on_toggle.is_some();
+        let icon_source = if self.value.is_selected() {
+            self.value
+        } else {
+            Value::Checked
+        };
+        let icon_color = self.style.state(icon_source, enabled).icon_color;
+
+        if icon_color.a <= 0.0 {
+            return;
+        }
+
+        let mut frame = canvas::Frame::new(&*renderer, checkbox_bounds.size());
+
+        // The checkmark's two strokes slide onto the dash as `morph` goes from
+        // 0 (checkmark) to 1 (dash), so the icon morphs instead of cross-fading.
+        let at = |checkmark: Point, dash: Point| {
+            Point::new(
+                checkmark.x + (dash.x - checkmark.x) * morph,
+                checkmark.y + (dash.y - checkmark.y) * morph,
+            )
+        };
+
+        let left_progress = (check * 2.0).clamp(0.0, 1.0);
+        stroke_line(
+            &mut frame,
+            at(Point::new(3.62, 9.0), Point::new(3.0, 9.0)),
+            at(Point::new(6.75, 12.13), Point::new(9.0, 9.0)),
+            left_progress,
+            icon_color,
+        );
+
+        let right_progress = ((check - 0.5) * 2.0).clamp(0.0, 1.0);
+        stroke_line(
+            &mut frame,
+            at(Point::new(6.75, 12.13), Point::new(9.0, 9.0)),
+            at(Point::new(15.75, 5.25), Point::new(15.0, 9.0)),
+            right_progress,
+            icon_color,
+        );
+
+        let geometry = frame.into_geometry();
+
+        renderer.with_translation(
+            Vector::new(checkbox_bounds.x, checkbox_bounds.y),
+            |renderer| {
+                renderer.draw_geometry(geometry);
+            },
+        );
     }
 
     fn mouse_interaction(
@@ -472,14 +456,7 @@ where
         _viewport: &iced::Rectangle,
         _renderer: &Renderer,
     ) -> mouse::Interaction {
-        if self.on_toggle.is_none() {
-            return mouse::Interaction::default();
-        }
-        if cursor.is_over(layout.bounds()) {
-            mouse::Interaction::Pointer
-        } else {
-            mouse::Interaction::default()
-        }
+        interaction::pointer_when(self.on_toggle.is_some(), cursor, layout.bounds())
     }
 
     fn update(
@@ -499,12 +476,7 @@ where
         let now = Instant::now();
         let enabled = self.on_toggle.is_some();
 
-        let layer_bounds = Rectangle {
-            x: bounds.x + (TOUCH_TARGET_SIZE - STATE_LAYER_SIZE) / 2.0,
-            y: bounds.y + (TOUCH_TARGET_SIZE - STATE_LAYER_SIZE) / 2.0,
-            width: STATE_LAYER_SIZE,
-            height: STATE_LAYER_SIZE,
-        };
+        let layer_bounds = centered_square(bounds, STATE_LAYER_SIZE);
         state
             .ripple
             .handle_in(event, bounds, layer_bounds, cursor, enabled, shell);
@@ -522,34 +494,50 @@ where
 
         let target_style = *self.style.state(self.value, enabled);
 
-        if !self.style_checked && self.style != state.last_style {
-            state.style_spring.reset(target_style, now);
-            state.last_style = self.style;
-            self.style_checked = true;
+        if sync_style_spring(
+            &mut state.style_spring,
+            &mut self.style_checked,
+            &mut state.last_style,
+            self.style,
+            target_style,
+            now,
+        ) {
             shell.request_redraw();
-        } else {
-            state.style_spring.set_target(target_style, now);
         }
 
-        let (check_target, dash_target) = match self.value {
-            Value::Unchecked => (0.0, 0.0),
-            Value::Checked => (1.0, 0.0),
-            Value::Indeterminate => (0.0, 1.0),
-        };
-        state.check.set_target(check_target, now);
-        state.dash.set_target(dash_target, now);
+        state
+            .check
+            .set_target(if self.value.is_selected() { 1.0 } else { 0.0 }, now);
 
-        if !state.check.is_at_rest() || !state.dash.is_at_rest() || !state.style_spring.is_at_rest()
+        // The icon morphs into the dash only while the checkbox is selected.
+        // When it becomes unchecked the dash keeps its shape while it fades
+        // out, so the morph target is left untouched.
+        match self.value {
+            Value::Checked => state.morph.set_target(0.0, now),
+            Value::Indeterminate => state.morph.set_target(1.0, now),
+            Value::Unchecked => {}
+        }
+
+        if !state.check.is_at_rest()
+            || !state.morph.is_at_rest()
+            || !state.style_spring.is_at_rest()
         {
             shell.request_redraw();
         }
 
         state.check.step(now);
-        state.dash.step(now);
+        state.morph.step(now);
         state.style_spring.step(now);
 
-        if state.check.is_at_rest() && state.dash.is_at_rest() && state.style_spring.is_at_rest() {
-            state.last_value = self.value;
+        if state.check.is_at_rest()
+            && state.morph.is_at_rest()
+            && state.style_spring.is_at_rest()
+            && self.value.is_unchecked()
+            && state.morph.to != 0.0
+        {
+            // The icon is fully hidden, so re-arm the morph for the next time
+            // the checkbox is checked without animating anything visible.
+            state.morph.reset(0.0, now);
         }
 
         match event {

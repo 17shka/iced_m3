@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 macro_rules! svg_handles {
     ($($name:ident => $file:literal),* $(,)?) => {
         $(
-            pub(crate) static $name: LazyLock<svg::Handle> = LazyLock::new(|| {
+            pub static $name: LazyLock<svg::Handle> = LazyLock::new(|| {
                 svg::Handle::from_memory(include_bytes!(concat!("../../resources/svg/", $file)))
             });
         )*
@@ -25,6 +25,7 @@ svg_handles! {
     PASTE => "content_paste.svg",
     SELECT_WORD => "highlight_alt.svg",
     SELECT_ALL => "select_all.svg",
+    SEARCH => "search.svg",
     UNDO => "undo.svg",
     REDO => "redo.svg",
 }

@@ -1,3 +1,4 @@
+use common::section_header;
 use iced::{
     Alignment, Element,
     widget::{column, row, text},
@@ -220,13 +221,6 @@ impl Page {
         .spacing(24)
         .into()
     }
-}
-
-fn section_header<'a>(title: &'a str, theme: &Theme) -> text::Text<'a> {
-    text(title)
-        .font(fonts::text_bold())
-        .size(18.0)
-        .color(theme.on_surface())
 }
 
 common::demo!(Page, Message, "Buttons Demo");

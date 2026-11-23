@@ -1,4 +1,4 @@
-use iced::{Event, mouse, touch};
+use iced::{Event, Rectangle, mouse, touch};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PressUpdate {
@@ -7,6 +7,17 @@ pub enum PressUpdate {
     Released,
     ReleasedOutside,
     Lost,
+}
+
+/// The interaction for an `enabled` interactive widget whose `bounds`
+/// contain the cursor: a pointer hand when interactive, otherwise the
+/// default interaction.
+pub fn pointer_when(enabled: bool, cursor: mouse::Cursor, bounds: Rectangle) -> mouse::Interaction {
+    if enabled && cursor.is_over(bounds) {
+        mouse::Interaction::Pointer
+    } else {
+        mouse::Interaction::default()
+    }
 }
 
 pub fn update_press(

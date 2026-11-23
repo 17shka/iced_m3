@@ -20,8 +20,10 @@ pub mod menu;
 pub mod navbar;
 pub mod navrail;
 pub mod progress_bar;
+pub mod radio;
 pub(crate) mod ripple;
 pub mod scrollable;
+pub mod select;
 #[cfg(feature = "shapes")]
 pub mod shapes;
 pub mod slider;
@@ -54,6 +56,8 @@ use crate::{
         navbar::NavBar,
         navrail::NavRail,
         progress_bar::ProgressBar,
+        radio::Radio,
+        select::{Item as SelectItem, Select},
         switch::Switch,
         text_input::TextInput,
     },
@@ -224,6 +228,15 @@ where
     Checkbox::new(theme, value)
 }
 
+/// Radio buttons let people select a single option from a set.
+#[must_use]
+pub fn radio<Message>(theme: &(impl ColorScheme + ?Sized), selected: bool) -> Radio<Message>
+where
+    Message: Clone,
+{
+    Radio::new(theme, selected)
+}
+
 #[must_use]
 pub fn card<'a, Message, Theme, Renderer>(
     style: card::Style,
@@ -265,6 +278,26 @@ pub fn loading_indicator(style: loading_indicator::Style) -> LoadingIndicator {
 #[must_use]
 pub fn circular_loading_indicator(style: loading_indicator::Style) -> CircularLoadingIndicator {
     CircularLoadingIndicator::new(style)
+}
+
+/// Exposed dropdown menu that lets people pick one option from a list.
+#[must_use]
+pub fn select<'a, T, Message>(
+    theme: &(impl ColorScheme + ?Sized),
+    items: impl IntoIterator<Item = SelectItem<T>>,
+    selected: Option<T>,
+    on_selected: impl Fn(Option<T>) -> Message + 'a,
+) -> Select<'a, T, Message>
+where
+    T: Clone + PartialEq,
+    Message: Clone,
+{
+    Select::new(theme, items, selected, on_selected)
+}
+
+/// A small set of SVG icons bundled with the library.
+pub mod icons {
+    pub use super::common_icons::*;
 }
 
 /// Connected button groups help people select options, switch views, or sort elements in a page.

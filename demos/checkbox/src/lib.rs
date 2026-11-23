@@ -1,9 +1,10 @@
+use common::{label, section_header};
 use iced::{
     Alignment, Element,
-    widget::{column, row, text},
+    widget::{column, row},
 };
 use iced_m3::{
-    theme::{ColorScheme, Theme},
+    theme::Theme,
     widget::{self, checkbox::Value},
 };
 
@@ -40,20 +41,6 @@ impl Default for Demo {
             value8: Value::Unchecked,
         }
     }
-}
-
-fn label<'a>(text: &'a str, theme: &Theme) -> text::Text<'a> {
-    text::Text::new(text)
-        .font(fonts::text_regular())
-        .size(16.0)
-        .color(theme.on_surface())
-}
-
-fn section_header<'a>(text: &'a str, theme: &Theme) -> text::Text<'a> {
-    text::Text::new(text)
-        .font(fonts::text_bold())
-        .size(18.0)
-        .color(theme.on_surface())
 }
 
 impl Demo {

@@ -1,10 +1,11 @@
+use common::{label, section_header};
 use iced::{
     Alignment, Element,
-    widget::{column, row, text},
+    widget::{column, row},
 };
 use iced_m3::{
     animation::motion,
-    theme::{ColorScheme, Theme},
+    theme::Theme,
     widget::{
         self, button,
         switch::{self, IconMode},
@@ -38,20 +39,6 @@ impl Default for Demo {
             icon_mode: IconMode::default(),
         }
     }
-}
-
-fn label<'a>(content: &'a str, theme: &Theme) -> text::Text<'a> {
-    text::Text::new(content)
-        .font(fonts::text_regular())
-        .size(16.0)
-        .color(theme.on_surface())
-}
-
-fn section_header<'a>(content: &'a str, theme: &Theme) -> text::Text<'a> {
-    text::Text::new(content)
-        .font(fonts::text_bold())
-        .size(18.0)
-        .color(theme.on_surface())
 }
 
 fn switch_row<'a>(

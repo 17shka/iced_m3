@@ -1,8 +1,6 @@
-use iced::{
-    Element,
-    widget::{column, text},
-};
-use iced_m3::theme::{ColorScheme, Theme};
+use common::section_header;
+use iced::{Element, widget::column};
+use iced_m3::theme::Theme;
 use iced_m3::widget::{Badge, hybrid_icon::Icon, navbar};
 
 #[derive(Clone)]
@@ -111,13 +109,6 @@ impl Page {
         .spacing(24)
         .into()
     }
-}
-
-fn section_header<'a>(title: &'a str, theme: &Theme) -> text::Text<'a> {
-    text(title)
-        .font(fonts::text_bold())
-        .size(18.0)
-        .color(theme.on_surface())
 }
 
 common::demo!(Page, Message, "Navbar Demo");

@@ -1,3 +1,4 @@
+use common::catalog::Tab;
 use demo_sliders as sliders;
 use iced::{
     Alignment, Element, Font, Length, Subscription, Task,
@@ -9,77 +10,11 @@ use iced_m3::{
 };
 use menu_demo as menu;
 use navbar_demo as navbar;
+use radio_demo as radio;
+use select_demo as select;
 use shapes_demo as shapes;
 
 const APP_NAME: &str = "Material 3 Showcase";
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum Tab {
-    #[default]
-    Badge,
-    Groups,
-    Buttons,
-    Cards,
-    Checkbox,
-    Dialog,
-    Fab,
-    Inputs,
-    Menu,
-    Navigation,
-    NavRail,
-    Progress,
-    Shapes,
-    Sliders,
-    Switch,
-}
-
-impl Tab {
-    fn index(self) -> usize {
-        self as usize
-    }
-
-    fn label(self) -> &'static str {
-        match self {
-            Tab::Badge => "Badge",
-            Tab::Groups => "Button groups",
-            Tab::Buttons => "Buttons",
-            Tab::Cards => "Cards",
-            Tab::Checkbox => "Checkbox",
-            Tab::Dialog => "Dialog",
-            Tab::Fab => "FAB",
-
-            Tab::Inputs => "Inputs",
-            Tab::Menu => "Menu",
-            Tab::Navigation => "Navigation bar",
-            Tab::NavRail => "Navigation rail",
-            Tab::Progress => "Progress",
-            Tab::Shapes => "Shapes",
-            Tab::Sliders => "Sliders",
-            Tab::Switch => "Switch",
-        }
-    }
-
-    fn icon(self) -> &'static str {
-        match self {
-            Tab::Badge => "notifications",
-            Tab::Buttons => "touch_app",
-            Tab::Cards => "dashboard",
-            Tab::Checkbox => "check_box",
-            Tab::Dialog => "chat_bubble",
-            Tab::Fab => "add_circle",
-
-            Tab::Groups => "group_work",
-            Tab::Inputs => "edit",
-            Tab::Menu => "menu",
-            Tab::Navigation => "explore",
-            Tab::NavRail => "view_sidebar",
-            Tab::Progress => "hourglass_empty",
-            Tab::Shapes => "interests",
-            Tab::Sliders => "tune",
-            Tab::Switch => "toggle_on",
-        }
-    }
-}
 
 #[derive(Clone)]
 enum Message {
@@ -90,6 +25,7 @@ enum Message {
     Inputs(inputs::Message),
     Sliders(sliders::Message),
     Progress(progress_indicators::Message),
+    Radio(radio::Message),
     Cards(card::Message),
     Fab(fab::Message),
 
@@ -102,6 +38,7 @@ enum Message {
     Menu(menu::Message),
     Badge(badges::Message),
     NavRail(::navrail::Message),
+    Select(select::Message),
     FontsLoaded,
 }
 
@@ -113,6 +50,7 @@ struct State {
     inputs_page: inputs::Page,
     sliders_page: sliders::Page,
     progress_page: progress_indicators::Page,
+    radio_page: radio::Page,
     card_page: card::Page,
     fab_page: fab::Page,
     navbar_page: navbar::Page,
@@ -125,6 +63,7 @@ struct State {
     navrail_page: ::navrail::Page,
 
     shapes_page: shapes::Page,
+    select_page: select::Page,
 }
 
 impl Default for State {
@@ -137,6 +76,7 @@ impl Default for State {
             inputs_page: inputs::Page::default(),
             sliders_page: sliders::Page::default(),
             progress_page: progress_indicators::Page::default(),
+            radio_page: radio::Page::default(),
             card_page: card::Page::default(),
             fab_page: fab::Page::default(),
             navbar_page: navbar::Page::default(),
@@ -149,6 +89,7 @@ impl Default for State {
             navrail_page: ::navrail::Page::default(),
 
             shapes_page: shapes::Page::default(),
+            select_page: select::Page::default(),
         }
     }
 }
@@ -163,6 +104,7 @@ impl State {
             Message::Inputs(msg) => self.inputs_page.update(msg),
             Message::Sliders(msg) => self.sliders_page.update(msg),
             Message::Progress(msg) => self.progress_page.update(msg),
+            Message::Radio(msg) => self.radio_page.update(msg),
             Message::Cards(msg) => self.card_page.update(msg),
             Message::Fab(msg) => self.fab_page.update(msg),
 
@@ -175,6 +117,7 @@ impl State {
             Message::Menu(msg) => self.menu_page.update(msg),
             Message::Badge(msg) => self.badge_page.update(msg),
             Message::NavRail(msg) => self.navrail_page.update(msg),
+            Message::Select(msg) => self.select_page.update(msg),
             // Fonts are loaded asynchronously; this message exists so the app
             // redraws (and re-measures text) once they are available. Without
             // it the first frame, rendered before the fonts are registered,
@@ -185,38 +128,23 @@ impl State {
     }
 
     fn view(&self) -> Element<'_, Message> {
-        let nav_items: Vec<navrail::Item<Message>> = [
-            Tab::Badge,
-            Tab::Groups,
-            Tab::Buttons,
-            Tab::Cards,
-            Tab::Checkbox,
-            Tab::Dialog,
-            Tab::Fab,
-            Tab::Inputs,
-            Tab::Menu,
-            Tab::Navigation,
-            Tab::NavRail,
-            Tab::Progress,
-            Tab::Shapes,
-            Tab::Sliders,
-            Tab::Switch,
-        ]
-        .into_iter()
-        .map(|tab| navrail::Item {
-            icon_active: Icon::Text {
-                text: tab.icon().into(),
-                font: Some(fonts::icons_filled()),
-            },
-            icon_inactive: Icon::Text {
-                text: tab.icon().into(),
-                font: Some(fonts::icons_outlined()),
-            },
-            badge: None,
-            label: tab.label().into(),
-            on_press: Message::SwitchTab(tab),
-        })
-        .collect();
+        let nav_items: Vec<navrail::Item<Message>> = Tab::ALL
+            .iter()
+            .copied()
+            .map(|tab| navrail::Item {
+                icon_active: Icon::Text {
+                    text: tab.icon().into(),
+                    font: Some(fonts::icons_filled()),
+                },
+                icon_inactive: Icon::Text {
+                    text: tab.icon().into(),
+                    font: Some(fonts::icons_outlined()),
+                },
+                badge: None,
+                label: tab.name().into(),
+                on_press: Message::SwitchTab(tab),
+            })
+            .collect();
 
         let navrail_mode = match self.navrail_expanded {
             true => navrail::Mode::ExpandedAuto,
@@ -233,7 +161,7 @@ impl State {
                 .menu_visible(true);
 
         let header = row![
-            text(self.tab.label())
+            text(self.tab.name())
                 .font(fonts::text_bold())
                 .size(24.0)
                 .color(self.theme.on_surface()),
@@ -256,6 +184,8 @@ impl State {
             Tab::Navigation => self.navbar_page.view(&self.theme).map(Message::Navigation),
             Tab::NavRail => self.navrail_page.view(&self.theme).map(Message::NavRail),
             Tab::Progress => self.progress_page.view(&self.theme).map(Message::Progress),
+            Tab::Radio => self.radio_page.view(&self.theme).map(Message::Radio),
+            Tab::Select => self.select_page.view(&self.theme).map(Message::Select),
             Tab::Shapes => self.shapes_page.view(&self.theme).map(Message::Shapes),
             Tab::Sliders => self.sliders_page.view(&self.theme).map(Message::Sliders),
             Tab::Switch => self.switch_page.view(&self.theme).map(Message::Switch),

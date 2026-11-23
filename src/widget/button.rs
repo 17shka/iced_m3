@@ -26,7 +26,10 @@ use crate::{
     widget::{
         self, Action,
         hybrid_icon::Icon,
-        internal::interaction::{self, PressUpdate},
+        internal::{
+            interaction::{self, PressUpdate},
+            motion::sync_style_spring,
+        },
         ripple::Ripple,
     },
 };
@@ -1072,13 +1075,14 @@ where
         let now = Instant::now();
 
         let style = *self.style.state_style(self.is_disabled(), self.selected);
-        if !self.style_change_checked && state.last_style != self.style {
-            state.style_spring.reset(style, now);
-            self.style_change_checked = true;
-            state.last_style = self.style;
-        } else {
-            state.style_spring.set_target(style, now);
-        }
+        sync_style_spring(
+            &mut state.style_spring,
+            &mut self.style_change_checked,
+            &mut state.last_style,
+            self.style,
+            style,
+            now,
+        );
 
         let corner_radius = self.size.corner_radius.radius(
             state.is_pressed && self.is_hovered,
@@ -1180,13 +1184,7 @@ where
         _viewport: &Rectangle,
         _renderer: &Renderer,
     ) -> mouse::Interaction {
-        let is_mouse_over = cursor.is_over(layout.bounds());
-
-        if is_mouse_over && !self.is_disabled() {
-            mouse::Interaction::Pointer
-        } else {
-            mouse::Interaction::default()
-        }
+        interaction::pointer_when(!self.is_disabled(), cursor, layout.bounds())
     }
 
     fn size_hint(&self) -> iced::Size<Length> {

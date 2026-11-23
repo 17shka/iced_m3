@@ -1,6 +1,8 @@
 pub use iced;
 pub use iced_m3;
 
+pub mod catalog;
+
 use iced::{
     Element, Font, Length, Subscription, Task,
     widget::{column, container, row, text::Text},
@@ -154,6 +156,24 @@ where
     ]
     .spacing(8)
     .into()
+}
+
+/// A bold section heading used by the demo pages.
+#[must_use]
+pub fn section_header<'a>(content: &'a str, theme: &impl ColorScheme) -> Text<'a> {
+    Text::new(content)
+        .font(fonts::text_bold())
+        .size(18.0)
+        .color(theme.on_surface())
+}
+
+/// A regular body label used by the demo pages.
+#[must_use]
+pub fn label<'a>(content: &'a str, theme: &impl ColorScheme) -> Text<'a> {
+    Text::new(content)
+        .font(fonts::text_regular())
+        .size(16.0)
+        .color(theme.on_surface())
 }
 
 #[macro_export]

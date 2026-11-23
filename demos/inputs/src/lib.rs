@@ -1,3 +1,4 @@
+use common::section_header;
 use iced::{
     Alignment, Element,
     alignment::Horizontal,
@@ -82,6 +83,7 @@ impl Page {
                 .color(theme.on_surface_variant()),
             TextInput::new("Type here...", &self.text_input_value, theme)
                 .on_input(Message::TextInputChanged)
+                .clearable(true)
                 .width(300.0),
             section_header("Secure Input", theme),
             TextInput::new("Password...", &self.secure_text_input_value, theme)
@@ -106,6 +108,7 @@ impl Page {
             section_header("Text input with icon", theme),
             TextInput::new("Search...", &self.text_input_with_icon, theme)
                 .on_input(Message::TextInputWithIconChanged)
+                .clearable(true)
                 .icon(iced_m3::widget::text_input::Icon {
                     font: fonts::icons_filled(),
                     code_point: '\u{e8b6}',
@@ -141,13 +144,6 @@ impl Page {
         .spacing(24)
         .into()
     }
-}
-
-fn section_header<'a>(title: &'a str, theme: &Theme) -> text::Text<'a> {
-    text(title)
-        .font(fonts::text_bold())
-        .size(18.0)
-        .color(theme.on_surface())
 }
 
 common::demo!(Page, Message, "Inputs Demo");

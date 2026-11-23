@@ -9,6 +9,7 @@ use iced::{
 };
 
 use crate::theme::ColorScheme;
+use crate::widget::internal::scrollbar;
 
 #[derive(Default)]
 struct WrapperState {
@@ -332,16 +333,21 @@ where
         let inner = scrollable
             .style(move |_theme: &Theme, status| {
                 let color = match status {
-                    Status::Active { .. } => scrollbar_color.scale_alpha(0.15),
+                    Status::Active { .. } => {
+                        scrollbar::scroller_color(scrollbar_color, false, false, false)
+                    }
                     Status::Hovered {
-                        is_vertical_scrollbar_hovered: false,
+                        is_vertical_scrollbar_hovered,
                         ..
-                    } => scrollbar_color.scale_alpha(0.35),
-                    Status::Hovered {
-                        is_vertical_scrollbar_hovered: true,
-                        ..
-                    } => scrollbar_color.scale_alpha(0.8),
-                    Status::Dragged { .. } => scrollbar_color,
+                    } => scrollbar::scroller_color(
+                        scrollbar_color,
+                        true,
+                        is_vertical_scrollbar_hovered,
+                        false,
+                    ),
+                    Status::Dragged { .. } => {
+                        scrollbar::scroller_color(scrollbar_color, true, true, true)
+                    }
                 };
 
                 Style {
@@ -351,7 +357,7 @@ where
                         border: Border::default(),
                         scroller: Scroller {
                             background: Background::Color(color),
-                            border: Border::default().rounded(u32::MAX),
+                            border: scrollbar::scroller_border(),
                         },
                     },
                     horizontal_rail: Rail {
@@ -359,7 +365,7 @@ where
                         border: Border::default(),
                         scroller: Scroller {
                             background: Background::Color(color),
-                            border: Border::default().rounded(u32::MAX),
+                            border: scrollbar::scroller_border(),
                         },
                     },
                     gap: None,
@@ -375,9 +381,9 @@ where
 
         Element::new(ScrollableWrapper {
             content: inner,
-            scrollbar_width: 4.0,
-            scrollbar_margin: 2.0,
-            scroller_width: 4.0,
+            scrollbar_width: scrollbar::WIDTH,
+            scrollbar_margin: scrollbar::MARGIN,
+            scroller_width: scrollbar::WIDTH,
             vertical_alignment: builder.vertical_alignment,
             horizontal_alignment: builder.horizontal_alignment,
             is_vertical,
@@ -410,9 +416,9 @@ where
 {
     Scrollable::new(scrollbar_color, content).direction(Direction::Vertical(
         Scrollbar::new()
-            .width(4)
-            .scroller_width(4)
-            .margin(2)
+            .width(scrollbar::WIDTH)
+            .scroller_width(scrollbar::WIDTH)
+            .margin(scrollbar::MARGIN)
             .anchor(Anchor::Start),
     ))
 }
