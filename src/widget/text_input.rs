@@ -1,8 +1,10 @@
+mod action;
 mod editor;
 mod value;
 
 pub mod cursor;
 
+pub use action::{Action, Shortcut};
 pub use cursor::Cursor;
 use iced::advanced::svg;
 use iced::border::Radius;
@@ -10,31 +12,33 @@ pub use value::Value;
 
 use editor::Editor;
 
-use iced_widget::core::alignment;
-use iced_widget::core::clipboard::{self, Clipboard};
-use iced_widget::core::input_method;
-use iced_widget::core::keyboard;
-use iced_widget::core::keyboard::key;
-use iced_widget::core::layout;
-use iced_widget::core::mouse::{self, click};
-use iced_widget::core::renderer;
-use iced_widget::core::text::paragraph::{self, Paragraph as _};
-use iced_widget::core::text::{self, Text};
-use iced_widget::core::time::{Duration, Instant};
-use iced_widget::core::touch;
-use iced_widget::core::widget;
-use iced_widget::core::widget::operation::{self, Operation};
-use iced_widget::core::widget::tree::{self, Tree};
-use iced_widget::core::window;
 use iced_widget::core::{
     Alignment, Background, Border, Color, Element, Event, InputMethod, Layout, Length, Padding,
-    Pixels, Point, Radians, Rectangle, Shell, Size, Theme, Vector, Widget,
+    Pixels, Point, Radians, Rectangle, Shell, Size, Theme, Vector, Widget, alignment,
+    clipboard::{self, Clipboard},
+    input_method,
+    keyboard::{self, key},
+    layout,
+    mouse::{self, click},
+    overlay, renderer,
+    text::{
+        self, Text,
+        paragraph::{self, Paragraph as _},
+    },
+    time::{Duration, Instant},
+    touch,
+    widget::{
+        self,
+        operation::{self, Operation},
+        tree::{self, Tree},
+    },
+    window,
 };
 
 use crate::animation::motion::{self, SpringValue};
-use crate::style::DIM_ALPHA;
+use crate::style::{DIM_ALPHA, shadow};
 use crate::theme::ColorScheme;
-use crate::widget::common_icons;
+use crate::widget::{common_icons, menu};
 
 pub struct TextInput<'a, Message, Theme = iced_widget::Theme, Renderer = iced_widget::Renderer>
 where
@@ -75,6 +79,137 @@ const LABEL_TEXT_OFFSET: Point = Point::new(
 const BORDER_WIDTH: f32 = 2.0;
 const EYE_ICON_SIZE: f32 = 24.0;
 const EYE_ICON_SPACING: f32 = 8.0;
+
+/// The maximum amount of undo steps kept by a [`TextInput`].
+const MAX_UNDO_STEPS: usize = 64;
+
+/// The time window used to group consecutive insertions or deletions into a
+/// single undo step.
+const UNDO_GROUPING_WINDOW: Duration = Duration::from_millis(500);
+
+#[derive(Debug, Default, Clone)]
+struct History {
+    undo: Vec<Snapshot>,
+    redo: Vec<Snapshot>,
+    last_edit: Option<EditKind>,
+    last_edit_at: Option<Instant>,
+    last_value: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct Snapshot {
+    value: String,
+    cursor: Cursor,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EditKind {
+    Insert,
+    Delete,
+    Other,
+}
+
+impl History {
+    fn record(&mut self, value: &str, cursor: Cursor, kind: EditKind) {
+        let now = Instant::now();
+
+        let is_grouped = matches!(kind, EditKind::Insert | EditKind::Delete)
+            && self.last_edit == Some(kind)
+            && self
+                .last_edit_at
+                .is_some_and(|last| now.duration_since(last) < UNDO_GROUPING_WINDOW);
+
+        self.redo.clear();
+
+        if !is_grouped {
+            if self.undo.len() == MAX_UNDO_STEPS {
+                self.undo.remove(0);
+            }
+
+            self.undo.push(Snapshot {
+                value: value.to_owned(),
+                cursor,
+            });
+        }
+
+        self.last_edit = Some(kind);
+        self.last_edit_at = Some(now);
+    }
+
+    fn commit(&mut self, value: &str) {
+        self.last_value = Some(value.to_owned());
+    }
+
+    fn break_group(&mut self) {
+        self.last_edit = None;
+        self.last_edit_at = None;
+    }
+
+    fn undo(&mut self, value: &str, cursor: Cursor) -> Option<Snapshot> {
+        self.break_group();
+
+        let snapshot = self.undo.pop()?;
+
+        self.redo.push(Snapshot {
+            value: value.to_owned(),
+            cursor,
+        });
+
+        self.last_value = Some(snapshot.value.clone());
+
+        Some(snapshot)
+    }
+
+    fn redo(&mut self, value: &str, cursor: Cursor) -> Option<Snapshot> {
+        self.break_group();
+
+        let snapshot = self.redo.pop()?;
+
+        if self.undo.len() == MAX_UNDO_STEPS {
+            self.undo.remove(0);
+        }
+
+        self.undo.push(Snapshot {
+            value: value.to_owned(),
+            cursor,
+        });
+
+        self.last_value = Some(snapshot.value.clone());
+
+        Some(snapshot)
+    }
+
+    fn reset(&mut self, value: &str) {
+        self.undo.clear();
+        self.redo.clear();
+        self.break_group();
+        self.last_value = Some(value.to_owned());
+    }
+}
+
+fn edit_value(
+    value: &mut Value,
+    cursor: &mut Cursor,
+    history: &mut History,
+    kind: EditKind,
+    change: impl FnOnce(&mut Editor<'_>),
+) -> String {
+    let before = value.to_string();
+    let cursor_before = *cursor;
+
+    let contents = {
+        let mut editor = Editor::new(value, cursor);
+        change(&mut editor);
+        editor.contents()
+    };
+
+    if contents != before {
+        history.record(&before, cursor_before, kind);
+        history.commit(&contents);
+    }
+
+    contents
+}
 
 impl<'a, Message, Theme, Renderer> TextInput<'a, Message, Theme, Renderer>
 where
@@ -395,10 +530,10 @@ where
             None
         };
 
-        children.push(
-            layout::Node::new(Size::new(text_width.max(0.0), text_bounds.height))
-                .move_to(text_position),
-        );
+        let text_node = layout::Node::new(Size::new(text_width.max(0.0), text_bounds.height))
+            .move_to(text_position);
+        state.text_bounds = Some(text_node.bounds());
+        children.push(text_node);
 
         if let Some(icon_node) = left_icon_node {
             children.push(icon_node);
@@ -800,9 +935,16 @@ where
     fn diff(&self, tree: &mut Tree) {
         let state = tree.state.downcast_mut::<State<Renderer::Paragraph>>();
 
+        let value = self.value.to_string();
+
+        if state.history.last_value.as_deref() != Some(value.as_str()) {
+            state.history.reset(&value);
+        }
+
         // Stop pasting if input becomes disabled
         if self.on_input.is_none() {
             state.is_pasting = None;
+            state.context_menu = None;
         }
 
         if state.eye_spring.is_none() && self.on_toggle_secure.is_some() {
@@ -872,11 +1014,15 @@ where
             }
         }
 
+        let text_bounds = layout
+            .children()
+            .next()
+            .map(|text_layout| text_layout.bounds());
         let update_cache = |state, value| {
             replace_paragraph(
                 renderer,
                 state,
-                layout,
+                text_bounds,
                 value,
                 self.font,
                 self.size,
@@ -885,6 +1031,16 @@ where
         };
 
         match &event {
+            Event::Window(
+                window::Event::Moved(_)
+                | window::Event::Resized(_)
+                | window::Event::Rescaled(_)
+                | window::Event::Closed,
+            ) => {
+                if state::<Renderer>(tree).context_menu.take().is_some() {
+                    shell.request_redraw();
+                }
+            }
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
             | Event::Touch(touch::Event::FingerPressed { .. }) => {
                 let state = state::<Renderer>(tree);
@@ -996,6 +1152,75 @@ where
 
                     shell.capture_event();
                 }
+
+                state.history.break_group();
+            }
+            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Right)) => {
+                let state = state::<Renderer>(tree);
+
+                if self.on_input.is_none() {
+                    return;
+                }
+
+                let Some(position) = cursor.position_over(layout.bounds()) else {
+                    if state.context_menu.take().is_some() {
+                        shell.request_redraw();
+                    }
+
+                    return;
+                };
+
+                let now = Instant::now();
+                state.is_focused = Some(Focus {
+                    updated_at: now,
+                    now,
+                    is_window_focused: true,
+                });
+
+                if state.cursor.selection(&self.value).is_none() {
+                    let text_layout = layout.children().next().unwrap();
+                    let text_bounds = text_layout.bounds();
+
+                    let alignment_offset = alignment_offset(
+                        text_bounds.width,
+                        state.value.raw().min_width(),
+                        self.alignment,
+                    );
+
+                    let target = position.x - text_bounds.x - alignment_offset;
+
+                    if target > 0.0 {
+                        let value = if self.is_secure {
+                            self.value.secure()
+                        } else {
+                            self.value.clone()
+                        };
+
+                        if let Some(position) =
+                            find_cursor_position(text_bounds, &value, state, target)
+                        {
+                            state.cursor.move_to(position);
+                        }
+                    }
+                }
+
+                let is_already_opened = state
+                    .context_menu
+                    .is_some_and(|menu| menu.position == position);
+
+                if !is_already_opened {
+                    state.context_menu = Some(ContextMenu {
+                        position,
+                        pressed: None,
+                        is_pressing: false,
+                        hovered: None,
+                    });
+                }
+
+                state.history.break_group();
+
+                shell.request_redraw();
+                shell.capture_event();
             }
             Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
             | Event::Touch(touch::Event::FingerLifted { .. })
@@ -1062,6 +1287,8 @@ where
                         shell.request_redraw();
                     }
 
+                    state.history.break_group();
+
                     shell.capture_event();
                 }
             }
@@ -1078,6 +1305,41 @@ where
                     let modifiers = state.keyboard_modifiers;
 
                     match key.to_latin(*physical_key) {
+                        Some(c)
+                            if state.keyboard_modifiers.command()
+                                && matches!(c.to_ascii_lowercase(), 'z' | 'y') =>
+                        {
+                            let Some(on_input) = &self.on_input else {
+                                return;
+                            };
+
+                            let is_redo =
+                                c.eq_ignore_ascii_case(&'y') || state.keyboard_modifiers.shift();
+
+                            let current = self.value.to_string();
+                            let cursor = state.cursor;
+
+                            let target = if is_redo {
+                                state.history.redo(&current, cursor)
+                            } else {
+                                state.history.undo(&current, cursor)
+                            };
+
+                            if let Some(snapshot) = target {
+                                self.value = Value::new(&snapshot.value);
+                                state.cursor = snapshot.cursor;
+                                state.is_pasting = None;
+
+                                shell.publish((on_input)(snapshot.value));
+                                shell.request_redraw();
+
+                                focus.updated_at = Instant::now();
+                                update_cache(state, &self.value);
+                            }
+
+                            shell.capture_event();
+                            return;
+                        }
                         Some('c') if state.keyboard_modifiers.command() && !self.is_secure => {
                             if let Some((start, end)) = state.cursor.selection(&self.value) {
                                 clipboard.write(
@@ -1101,11 +1363,15 @@ where
                                 );
                             }
 
-                            let mut editor = Editor::new(&mut self.value, &mut state.cursor);
-                            editor.delete();
+                            let contents = edit_value(
+                                &mut self.value,
+                                &mut state.cursor,
+                                &mut state.history,
+                                EditKind::Other,
+                                |editor| editor.delete(),
+                            );
 
-                            let message = (on_input)(editor.contents());
-                            shell.publish(message);
+                            shell.publish((on_input)(contents));
                             shell.capture_event();
 
                             focus.updated_at = Instant::now();
@@ -1134,13 +1400,18 @@ where
                                 }
                             };
 
-                            let mut editor = Editor::new(&mut self.value, &mut state.cursor);
-                            editor.paste(content.clone());
+                            let contents = edit_value(
+                                &mut self.value,
+                                &mut state.cursor,
+                                &mut state.history,
+                                EditKind::Other,
+                                |editor| editor.paste(content.clone()),
+                            );
 
                             let message = if let Some(paste) = &self.on_paste {
-                                (paste)(editor.contents())
+                                (paste)(contents)
                             } else {
-                                (on_input)(editor.contents())
+                                (on_input)(contents)
                             };
                             shell.publish(message);
                             shell.capture_event();
@@ -1153,6 +1424,7 @@ where
                         Some('a') if state.keyboard_modifiers.command() => {
                             let cursor_before = state.cursor;
 
+                            state.history.break_group();
                             state.cursor.select_all(&self.value);
 
                             if cursor_before != state.cursor {
@@ -1175,12 +1447,15 @@ where
                         state.is_pasting = None;
 
                         if let Some(c) = text.chars().next().filter(|c| !c.is_control()) {
-                            let mut editor = Editor::new(&mut self.value, &mut state.cursor);
+                            let contents = edit_value(
+                                &mut self.value,
+                                &mut state.cursor,
+                                &mut state.history,
+                                EditKind::Insert,
+                                |editor| editor.insert(c),
+                            );
 
-                            editor.insert(c);
-
-                            let message = (on_input)(editor.contents());
-                            shell.publish(message);
+                            shell.publish((on_input)(contents));
                             shell.capture_event();
 
                             focus.updated_at = Instant::now();
@@ -1218,11 +1493,15 @@ where
                                 }
                             }
 
-                            let mut editor = Editor::new(&mut self.value, &mut state.cursor);
-                            editor.backspace();
+                            let contents = edit_value(
+                                &mut self.value,
+                                &mut state.cursor,
+                                &mut state.history,
+                                EditKind::Delete,
+                                |editor| editor.backspace(),
+                            );
 
-                            let message = (on_input)(editor.contents());
-                            shell.publish(message);
+                            shell.publish((on_input)(contents));
                             shell.capture_event();
 
                             focus.updated_at = Instant::now();
@@ -1245,11 +1524,15 @@ where
                                 }
                             }
 
-                            let mut editor = Editor::new(&mut self.value, &mut state.cursor);
-                            editor.delete();
+                            let contents = edit_value(
+                                &mut self.value,
+                                &mut state.cursor,
+                                &mut state.history,
+                                EditKind::Delete,
+                                |editor| editor.delete(),
+                            );
 
-                            let message = (on_input)(editor.contents());
-                            shell.publish(message);
+                            shell.publish((on_input)(contents));
                             shell.capture_event();
 
                             focus.updated_at = Instant::now();
@@ -1257,6 +1540,8 @@ where
                         }
                         keyboard::Key::Named(key::Named::Home) => {
                             let cursor_before = state.cursor;
+
+                            state.history.break_group();
 
                             if modifiers.shift() {
                                 state
@@ -1277,6 +1562,8 @@ where
                         keyboard::Key::Named(key::Named::End) => {
                             let cursor_before = state.cursor;
 
+                            state.history.break_group();
+
                             if modifiers.shift() {
                                 state.cursor.select_range(
                                     state.cursor.start(&self.value),
@@ -1296,6 +1583,8 @@ where
                         }
                         keyboard::Key::Named(key::Named::ArrowLeft) => {
                             let cursor_before = state.cursor;
+
+                            state.history.break_group();
 
                             if (self.is_secure && modifiers.jump()) || modifiers.macos_command() {
                                 if modifiers.shift() {
@@ -1328,6 +1617,8 @@ where
                         keyboard::Key::Named(key::Named::ArrowRight) => {
                             let cursor_before = state.cursor;
 
+                            state.history.break_group();
+
                             if (self.is_secure && modifiers.jump()) || modifiers.macos_command() {
                                 if modifiers.shift() {
                                     state.cursor.select_range(
@@ -1358,12 +1649,15 @@ where
                             shell.capture_event();
                         }
                         keyboard::Key::Named(key::Named::Escape) => {
+                            state.history.break_group();
                             state.is_focused = None;
                             state.is_dragging = None;
                             state.is_pasting = None;
+                            state.context_menu = None;
 
                             state.keyboard_modifiers = keyboard::Modifiers::default();
 
+                            shell.request_redraw();
                             shell.capture_event();
                         }
                         _ => {}
@@ -1418,14 +1712,18 @@ where
                             return;
                         };
 
-                        let mut editor = Editor::new(&mut self.value, &mut state.cursor);
-                        editor.paste(Value::new(text));
+                        let contents = edit_value(
+                            &mut self.value,
+                            &mut state.cursor,
+                            &mut state.history,
+                            EditKind::Other,
+                            |editor| editor.paste(Value::new(text)),
+                        );
 
                         focus.updated_at = Instant::now();
                         state.is_pasting = None;
 
-                        let message = (on_input)(editor.contents());
-                        shell.publish(message);
+                        shell.publish((on_input)(contents));
                         shell.capture_event();
 
                         update_cache(state, &self.value);
@@ -1435,8 +1733,14 @@ where
             Event::Window(window::Event::Unfocused) => {
                 let state = state::<Renderer>(tree);
 
+                state.history.break_group();
+
                 if let Some(focus) = &mut state.is_focused {
                     focus.is_window_focused = false;
+                }
+
+                if state.context_menu.take().is_some() {
+                    shell.request_redraw();
                 }
             }
             Event::Window(window::Event::Focused) => {
@@ -1508,6 +1812,28 @@ where
         viewport: &Rectangle,
     ) {
         self.draw(tree, renderer, theme, layout, cursor, None, viewport);
+    }
+
+    fn overlay<'b>(
+        &'b mut self,
+        tree: &'b mut Tree,
+        _layout: Layout<'b>,
+        _renderer: &Renderer,
+        _viewport: &Rectangle,
+        translation: Vector,
+    ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
+        let state = tree.state.downcast_mut::<State<Renderer::Paragraph>>();
+        let menu = state.context_menu?;
+
+        let style = menu::Style::new(self.theme, false);
+        let position = menu.position + translation;
+
+        Some(overlay::Element::new(Box::new(ContextMenuOverlay {
+            input: self,
+            state,
+            style,
+            position,
+        })))
     }
 
     fn mouse_interaction(
@@ -1590,8 +1916,37 @@ pub struct State<P: text::Paragraph> {
     cursor: Cursor,
     keyboard_modifiers: keyboard::Modifiers,
     eye_spring: Option<SpringValue<f32>>,
+    context_menu: Option<ContextMenu>,
+    text_bounds: Option<Rectangle>,
+    history: History,
     // TODO: Add stateful horizontal scrolling offset
 }
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ContextMenu {
+    position: Point,
+    pressed: Option<Action>,
+    is_pressing: bool,
+    hovered: Option<Action>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ContextMenuEntry {
+    Item(Action),
+    Separator,
+}
+
+const CONTEXT_MENU_ENTRIES: [ContextMenuEntry; 9] = [
+    ContextMenuEntry::Item(Action::Copy),
+    ContextMenuEntry::Item(Action::Cut),
+    ContextMenuEntry::Item(Action::Paste),
+    ContextMenuEntry::Separator,
+    ContextMenuEntry::Item(Action::SelectWord),
+    ContextMenuEntry::Item(Action::SelectAll),
+    ContextMenuEntry::Separator,
+    ContextMenuEntry::Item(Action::Undo),
+    ContextMenuEntry::Item(Action::Redo),
+];
 
 fn state<Renderer: text::Renderer>(tree: &mut Tree) -> &mut State<Renderer::Paragraph> {
     tree.state.downcast_mut::<State<Renderer::Paragraph>>()
@@ -1642,30 +1997,34 @@ impl<P: text::Paragraph> State<P> {
     /// Unfocuses the [`TextInput`].
     pub fn unfocus(&mut self) {
         self.is_focused = None;
+        self.history.break_group();
     }
 
     /// Moves the [`Cursor`] of the [`TextInput`] to the front of the input text.
     pub fn move_cursor_to_front(&mut self) {
-        self.cursor.move_to(0);
+        self.move_cursor_to(0);
     }
 
     /// Moves the [`Cursor`] of the [`TextInput`] to the end of the input text.
     pub fn move_cursor_to_end(&mut self) {
-        self.cursor.move_to(usize::MAX);
+        self.move_cursor_to(usize::MAX);
     }
 
     /// Moves the [`Cursor`] of the [`TextInput`] to an arbitrary location.
     pub fn move_cursor_to(&mut self, position: usize) {
+        self.history.break_group();
         self.cursor.move_to(position);
     }
 
     /// Selects all the content of the [`TextInput`].
     pub fn select_all(&mut self) {
+        self.history.break_group();
         self.cursor.select_range(0, usize::MAX);
     }
 
     /// Selects the given range of the content of the [`TextInput`].
     pub fn select_range(&mut self, start: usize, end: usize) {
+        self.history.break_group();
         self.cursor.select_range(start, end);
     }
 }
@@ -1775,7 +2134,7 @@ fn find_cursor_position<P: text::Paragraph>(
 fn replace_paragraph<Renderer>(
     renderer: &Renderer,
     state: &mut State<Renderer::Paragraph>,
-    layout: Layout<'_>,
+    text_bounds: Option<Rectangle>,
     value: &Value,
     font: Option<Renderer::Font>,
     text_size: Option<Pixels>,
@@ -1786,14 +2145,13 @@ fn replace_paragraph<Renderer>(
     let font = font.unwrap_or_else(|| renderer.default_font());
     let text_size = text_size.unwrap_or_else(|| renderer.default_size());
 
-    let mut children_layout = layout.children();
-    let text_bounds = children_layout.next().unwrap().bounds();
+    let height = text_bounds.map_or(0.0, |text_bounds| text_bounds.height);
 
     state.value = paragraph::Plain::new(Text {
         font,
         line_height,
         content: value.to_string(),
-        bounds: Size::new(f32::INFINITY, text_bounds.height),
+        bounds: Size::new(f32::INFINITY, height),
         size: text_size,
         align_x: text::Alignment::Default,
         align_y: alignment::Vertical::Center,
@@ -1947,4 +2305,731 @@ fn convert_macos_shortcut(
     };
 
     Some(keyboard::Key::Named(named))
+}
+
+struct ContextMenuOverlay<'a, 'b, Message, Theme, Renderer>
+where
+    Message: Clone,
+    Theme: Catalog,
+    Renderer: text::Renderer + svg::Renderer,
+{
+    input: &'b mut TextInput<'a, Message, Theme, Renderer>,
+    state: &'b mut State<Renderer::Paragraph>,
+    style: menu::Style,
+    position: Point,
+}
+
+impl<'a, 'b, Message, Theme, Renderer> ContextMenuOverlay<'a, 'b, Message, Theme, Renderer>
+where
+    Message: Clone,
+    Theme: Catalog,
+    Renderer: text::Renderer + svg::Renderer,
+{
+    fn is_enabled(&self, item: Action) -> bool {
+        match item {
+            Action::Undo => self.input.on_input.is_some() && !self.state.history.undo.is_empty(),
+            Action::Redo => self.input.on_input.is_some() && !self.state.history.redo.is_empty(),
+            Action::Copy | Action::Cut => {
+                !self.input.is_secure && self.state.cursor.selection(&self.input.value).is_some()
+            }
+            Action::Paste => self.input.on_input.is_some(),
+            Action::SelectWord | Action::SelectAll => {
+                !self.input.value.is_empty() && self.input.on_input.is_some()
+            }
+        }
+    }
+
+    fn item_at(&self, layout: Layout<'_>, position: Point) -> Option<Action> {
+        layout
+            .children()
+            .zip(CONTEXT_MENU_ENTRIES)
+            .find_map(|(child, entry)| match entry {
+                ContextMenuEntry::Item(item) if child.bounds().contains(position) => Some(item),
+                _ => None,
+            })
+    }
+
+    fn close(&mut self, shell: &mut Shell<'_, Message>) {
+        self.state.context_menu = None;
+        shell.request_redraw();
+    }
+
+    fn edit(
+        &mut self,
+        change: impl FnOnce(&mut Editor<'_>),
+        kind: EditKind,
+        is_paste: bool,
+        shell: &mut Shell<'_, Message>,
+        renderer: &Renderer,
+    ) {
+        let callback = if is_paste {
+            self.input
+                .on_paste
+                .as_ref()
+                .or(self.input.on_input.as_ref())
+        } else {
+            self.input.on_input.as_ref()
+        };
+
+        let Some(callback) = callback else {
+            return;
+        };
+
+        let contents = edit_value(
+            &mut self.input.value,
+            &mut self.state.cursor,
+            &mut self.state.history,
+            kind,
+            change,
+        );
+
+        let message = (callback)(contents);
+
+        self.state.is_pasting = None;
+
+        if let Some(focus) = &mut self.state.is_focused {
+            focus.updated_at = Instant::now();
+        }
+
+        let text_bounds = self.state.text_bounds;
+
+        replace_paragraph(
+            renderer,
+            self.state,
+            text_bounds,
+            &self.input.value,
+            self.input.font,
+            self.input.size,
+            self.input.line_height,
+        );
+
+        shell.publish(message);
+        shell.request_redraw();
+    }
+
+    fn history_action(
+        &mut self,
+        is_redo: bool,
+        shell: &mut Shell<'_, Message>,
+        renderer: &Renderer,
+    ) {
+        if self.input.on_input.is_none() {
+            return;
+        }
+
+        let current = self.input.value.to_string();
+        let cursor = self.state.cursor;
+
+        let target = if is_redo {
+            self.state.history.redo(&current, cursor)
+        } else {
+            self.state.history.undo(&current, cursor)
+        };
+
+        let Some(snapshot) = target else {
+            return;
+        };
+
+        self.input.value = Value::new(&snapshot.value);
+        self.state.cursor = snapshot.cursor;
+        self.state.is_pasting = None;
+
+        if let Some(focus) = &mut self.state.is_focused {
+            focus.updated_at = Instant::now();
+        }
+
+        let text_bounds = self.state.text_bounds;
+
+        replace_paragraph(
+            renderer,
+            self.state,
+            text_bounds,
+            &self.input.value,
+            self.input.font,
+            self.input.size,
+            self.input.line_height,
+        );
+
+        if let Some(on_input) = &self.input.on_input {
+            shell.publish((on_input)(snapshot.value));
+        }
+
+        shell.request_redraw();
+    }
+
+    fn perform(
+        &mut self,
+        item: Action,
+        clipboard: &mut dyn Clipboard,
+        shell: &mut Shell<'_, Message>,
+        renderer: &Renderer,
+    ) {
+        match item {
+            Action::Undo => self.history_action(false, shell, renderer),
+            Action::Redo => self.history_action(true, shell, renderer),
+            Action::Copy => {
+                if let Some((start, end)) = self.state.cursor.selection(&self.input.value) {
+                    clipboard.write(
+                        clipboard::Kind::Standard,
+                        self.input.value.select(start, end).to_string(),
+                    );
+                }
+            }
+            Action::Cut => {
+                if let Some((start, end)) = self.state.cursor.selection(&self.input.value) {
+                    clipboard.write(
+                        clipboard::Kind::Standard,
+                        self.input.value.select(start, end).to_string(),
+                    );
+
+                    self.edit(
+                        |editor| editor.delete(),
+                        EditKind::Other,
+                        false,
+                        shell,
+                        renderer,
+                    );
+                }
+            }
+            Action::Paste => {
+                let content: String = clipboard
+                    .read(clipboard::Kind::Standard)
+                    .unwrap_or_default()
+                    .chars()
+                    .filter(|c| !c.is_control())
+                    .collect();
+
+                if !content.is_empty() {
+                    self.edit(
+                        |editor| editor.paste(Value::new(&content)),
+                        EditKind::Other,
+                        true,
+                        shell,
+                        renderer,
+                    );
+                }
+            }
+            Action::SelectWord => {
+                let position = self.state.cursor.end(&self.input.value);
+                let start = self.input.value.previous_start_of_word(position);
+                let end = self.input.value.next_end_of_word(position);
+
+                self.state.cursor.select_range(start, end);
+                self.request_selection_redraw(shell);
+            }
+            Action::SelectAll => {
+                self.state.cursor.select_all(&self.input.value);
+                self.request_selection_redraw(shell);
+            }
+        }
+    }
+
+    fn request_selection_redraw(&mut self, shell: &mut Shell<'_, Message>) {
+        if let Some(focus) = &mut self.state.is_focused {
+            focus.updated_at = Instant::now();
+        }
+
+        shell.request_redraw();
+    }
+}
+
+impl<'a, 'b, Message, Theme, Renderer> overlay::Overlay<Message, Theme, Renderer>
+    for ContextMenuOverlay<'a, 'b, Message, Theme, Renderer>
+where
+    Message: Clone,
+    Theme: Catalog,
+    Renderer: text::Renderer + svg::Renderer,
+{
+    fn layout(&mut self, _renderer: &Renderer, bounds: Size) -> layout::Node {
+        let width = menu::constants::DEFAULT_WIDTH.0;
+        let padding = menu::constants::MENU_GROUP_PADDING.0;
+        let spacing = menu::constants::MENU_ITEM_SPACING.0;
+
+        let mut children = Vec::with_capacity(CONTEXT_MENU_ENTRIES.len());
+        let mut offset_y = padding;
+
+        for entry in CONTEXT_MENU_ENTRIES {
+            let height = match entry {
+                ContextMenuEntry::Item(_) => menu::constants::ITEM_HEIGHT.0,
+                ContextMenuEntry::Separator => menu::constants::SPACER_HEIGHT.0,
+            };
+
+            children.push(
+                layout::Node::new(Size::new(width - 2.0 * padding, height))
+                    .move_to(Point::new(padding, offset_y)),
+            );
+
+            offset_y += height + spacing;
+        }
+
+        let height = offset_y - spacing + padding;
+        let position = clamp_position(self.position, Size::new(width, height), bounds);
+
+        layout::Node::with_children(Size::new(width, height), children).move_to(position)
+    }
+
+    fn draw(
+        &self,
+        renderer: &mut Renderer,
+        _theme: &Theme,
+        _style: &renderer::Style,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+    ) {
+        let bounds = layout.bounds();
+
+        renderer.fill_quad(
+            renderer::Quad {
+                bounds,
+                border: self.style.container_border,
+                shadow: shadow(self.style.shadow_color, self.style.elevation),
+                ..Default::default()
+            },
+            self.style.container_color,
+        );
+
+        let font = self.input.font.unwrap_or_else(|| renderer.default_font());
+        let pressed = self.state.context_menu.and_then(|menu| menu.pressed);
+        let mut children = layout.children();
+
+        for entry in CONTEXT_MENU_ENTRIES {
+            let child_bounds = children.next().unwrap().bounds();
+
+            match entry {
+                ContextMenuEntry::Separator => {
+                    renderer.fill_quad(
+                        renderer::Quad {
+                            bounds: child_bounds,
+                            border: Border::default().rounded(f32::MAX),
+                            ..Default::default()
+                        },
+                        self.style.separator_color,
+                    );
+                }
+                ContextMenuEntry::Item(item) => {
+                    let enabled = self.is_enabled(item);
+                    let hovered = enabled && cursor.is_over(child_bounds);
+                    let opacity = if enabled {
+                        1.0
+                    } else {
+                        menu::constants::ITEM_CONTENT_DISABLED_OPACITY
+                    };
+
+                    let state_layer = if hovered && pressed == Some(item) {
+                        self.style.item.state_layer.pressed
+                    } else if hovered {
+                        self.style.item.state_layer.hovered
+                    } else {
+                        Color::TRANSPARENT
+                    };
+
+                    if state_layer.a > 0.0 {
+                        renderer.fill_quad(
+                            renderer::Quad {
+                                bounds: child_bounds,
+                                border: Border::default()
+                                    .rounded(menu::constants::ITEM_CORNER_RADIUS.0),
+                                ..Default::default()
+                            },
+                            state_layer,
+                        );
+                    }
+
+                    let padding = menu::constants::ITEM_CONTENT_PADDING.0;
+                    let icon_size = menu::constants::ITEM_ICON_SIZE.0;
+                    let spacing = menu::constants::ITEM_CONTENT_SPACING.0;
+
+                    let icon_bounds = Rectangle {
+                        x: child_bounds.x + padding,
+                        y: child_bounds.y + (child_bounds.height - icon_size) / 2.0,
+                        width: icon_size,
+                        height: icon_size,
+                    };
+
+                    renderer.draw_svg(
+                        svg::Svg {
+                            handle: item.icon(),
+                            color: Some(self.style.item.icon_color),
+                            rotation: Radians(0.0),
+                            opacity,
+                        },
+                        icon_bounds,
+                        icon_bounds,
+                    );
+
+                    let shortcut = item.shortcut_text();
+                    let shortcut_line_height = menu::constants::ITEM_SUPPORTING_TEXT_LINE_HEIGHT.0;
+
+                    let shortcut_width = shortcut.as_ref().map_or(0.0, |shortcut| {
+                        <Renderer as text::Renderer>::Paragraph::with_text(text::Text {
+                            content: shortcut.as_str(),
+                            bounds: Size::new(child_bounds.width, shortcut_line_height),
+                            size: menu::constants::ITEM_SUPPORTING_TEXT_SIZE,
+                            line_height: text::LineHeight::Absolute(
+                                menu::constants::ITEM_SUPPORTING_TEXT_LINE_HEIGHT,
+                            ),
+                            font,
+                            align_x: text::Alignment::Left,
+                            align_y: alignment::Vertical::Top,
+                            shaping: text::Shaping::Advanced,
+                            wrapping: text::Wrapping::None,
+                        })
+                        .min_bounds()
+                        .width
+                    });
+
+                    let shortcut_gap = if shortcut_width > 0.0 {
+                        spacing + shortcut_width
+                    } else {
+                        0.0
+                    };
+
+                    let content_right = child_bounds.x + child_bounds.width - padding;
+                    let label_height = menu::constants::ITEM_LABEL_LINE_HEIGHT.0;
+                    let label_x = icon_bounds.x + icon_size + spacing;
+                    let label_bounds = Rectangle {
+                        x: label_x,
+                        y: child_bounds.y + (child_bounds.height - label_height) / 2.0,
+                        width: (content_right - label_x - shortcut_gap).max(0.0),
+                        height: label_height,
+                    };
+
+                    renderer.fill_text(
+                        text::Text {
+                            content: item.label().to_owned(),
+                            bounds: label_bounds.size(),
+                            size: menu::constants::ITEM_LABEL_FONT_SIZE,
+                            line_height: text::LineHeight::Absolute(
+                                menu::constants::ITEM_LABEL_LINE_HEIGHT,
+                            ),
+                            font,
+                            align_x: text::Alignment::Left,
+                            align_y: alignment::Vertical::Top,
+                            shaping: text::Shaping::Advanced,
+                            wrapping: text::Wrapping::None,
+                        },
+                        label_bounds.position(),
+                        self.style.item.label_color.scale_alpha(opacity),
+                        label_bounds,
+                    );
+
+                    if let Some(shortcut) = shortcut {
+                        let shortcut_bounds = Rectangle {
+                            x: label_x,
+                            y: child_bounds.y + (child_bounds.height - shortcut_line_height) / 2.0,
+                            width: (content_right - label_x).max(0.0),
+                            height: shortcut_line_height,
+                        };
+
+                        renderer.fill_text(
+                            text::Text {
+                                content: shortcut,
+                                bounds: shortcut_bounds.size(),
+                                size: menu::constants::ITEM_SUPPORTING_TEXT_SIZE,
+                                line_height: text::LineHeight::Absolute(
+                                    menu::constants::ITEM_SUPPORTING_TEXT_LINE_HEIGHT,
+                                ),
+                                font,
+                                align_x: text::Alignment::Right,
+                                align_y: alignment::Vertical::Top,
+                                shaping: text::Shaping::Advanced,
+                                wrapping: text::Wrapping::None,
+                            },
+                            Point::new(content_right, shortcut_bounds.y),
+                            self.style.item.supporting_text_color.scale_alpha(opacity),
+                            shortcut_bounds,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    fn update(
+        &mut self,
+        event: &Event,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        renderer: &Renderer,
+        clipboard: &mut dyn Clipboard,
+        shell: &mut Shell<'_, Message>,
+    ) {
+        let bounds = layout.bounds();
+
+        let Some(menu) = self.state.context_menu else {
+            return;
+        };
+
+        match event {
+            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
+            | Event::Touch(touch::Event::FingerPressed { .. }) => {
+                let Some(position) = cursor.position() else {
+                    return;
+                };
+
+                if bounds.contains(position) {
+                    let item = self.item_at(layout, position);
+
+                    if let Some(menu) = &mut self.state.context_menu {
+                        menu.pressed = item;
+                        menu.is_pressing = true;
+                    }
+
+                    shell.capture_event();
+                    shell.request_redraw();
+                } else {
+                    self.close(shell);
+                }
+            }
+            Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
+            | Event::Touch(touch::Event::FingerLifted { .. }) => {
+                if !menu.is_pressing {
+                    return;
+                }
+
+                let pressed = menu.pressed;
+                let released_over = cursor
+                    .position()
+                    .filter(|position| bounds.contains(*position))
+                    .and_then(|position| self.item_at(layout, position));
+
+                shell.capture_event();
+
+                match pressed {
+                    Some(item) if !self.is_enabled(item) => {
+                        // Disabled items are not actionable, so treat the press
+                        // as a no-op and keep the menu open.
+                        if let Some(menu) = &mut self.state.context_menu {
+                            menu.pressed = None;
+                            menu.is_pressing = false;
+                        }
+
+                        shell.request_redraw();
+                    }
+                    Some(item) if Some(item) == released_over => {
+                        self.perform(item, clipboard, shell, renderer);
+                        self.close(shell);
+                    }
+                    _ => self.close(shell),
+                }
+            }
+            Event::Touch(touch::Event::FingerLost { .. }) => {
+                if menu.is_pressing {
+                    if let Some(menu) = &mut self.state.context_menu {
+                        menu.is_pressing = false;
+                        menu.pressed = None;
+                    }
+
+                    shell.request_redraw();
+                }
+            }
+            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Right)) => {
+                let is_inside = cursor
+                    .position()
+                    .is_some_and(|position| bounds.contains(position));
+
+                if is_inside {
+                    shell.capture_event();
+                } else {
+                    // Let the input handle the press so it can reopen the menu at
+                    // the new position.
+                    self.close(shell);
+                }
+            }
+            Event::Mouse(mouse::Event::CursorMoved { .. })
+            | Event::Touch(touch::Event::FingerMoved { .. }) => {
+                let hovered = cursor
+                    .position()
+                    .filter(|position| bounds.contains(*position))
+                    .and_then(|position| self.item_at(layout, position));
+
+                if menu.hovered != hovered {
+                    if let Some(menu) = &mut self.state.context_menu {
+                        menu.hovered = hovered;
+                    }
+
+                    shell.request_redraw();
+                }
+            }
+            Event::Keyboard(keyboard::Event::KeyPressed { key, .. })
+                if matches!(key.as_ref(), keyboard::Key::Named(key::Named::Escape)) =>
+            {
+                self.close(shell);
+                shell.capture_event();
+            }
+            _ => {}
+        }
+    }
+
+    fn mouse_interaction(
+        &self,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        _renderer: &Renderer,
+    ) -> mouse::Interaction {
+        let Some(item) = cursor
+            .position_over(layout.bounds())
+            .and_then(|position| self.item_at(layout, position))
+        else {
+            return mouse::Interaction::None;
+        };
+
+        if self.is_enabled(item) {
+            mouse::Interaction::Pointer
+        } else {
+            mouse::Interaction::None
+        }
+    }
+}
+
+/// Clamps the position of the context menu so that it fits inside the window.
+fn clamp_position(position: Point, size: Size, window: Size) -> Point {
+    Point::new(
+        position.x.clamp(0.0, (window.width - size.width).max(0.0)),
+        position
+            .y
+            .clamp(0.0, (window.height - size.height).max(0.0)),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clamp_position_keeps_menu_inside_window() {
+        let window = Size::new(800.0, 600.0);
+        let menu = Size::new(192.0, 200.0);
+
+        assert_eq!(
+            clamp_position(Point::new(100.0, 100.0), menu, window),
+            Point::new(100.0, 100.0)
+        );
+        assert_eq!(
+            clamp_position(Point::new(780.0, 580.0), menu, window),
+            Point::new(608.0, 400.0)
+        );
+        assert_eq!(
+            clamp_position(Point::new(-20.0, -20.0), menu, window),
+            Point::new(0.0, 0.0)
+        );
+    }
+
+    #[test]
+    fn clamp_position_keeps_menu_at_origin_when_it_cannot_fit() {
+        let window = Size::new(100.0, 80.0);
+        let menu = Size::new(192.0, 200.0);
+
+        assert_eq!(
+            clamp_position(Point::new(10.0, 10.0), menu, window),
+            Point::new(0.0, 0.0)
+        );
+    }
+
+    #[test]
+    fn context_menu_lists_edit_and_selection_items() {
+        assert_eq!(
+            CONTEXT_MENU_ENTRIES,
+            [
+                ContextMenuEntry::Item(Action::Copy),
+                ContextMenuEntry::Item(Action::Cut),
+                ContextMenuEntry::Item(Action::Paste),
+                ContextMenuEntry::Separator,
+                ContextMenuEntry::Item(Action::SelectWord),
+                ContextMenuEntry::Item(Action::SelectAll),
+                ContextMenuEntry::Separator,
+                ContextMenuEntry::Item(Action::Undo),
+                ContextMenuEntry::Item(Action::Redo),
+            ]
+        );
+    }
+
+    #[test]
+    fn history_groups_consecutive_typing() {
+        let cursor = Cursor::default();
+        let mut history = History::default();
+
+        history.record("", cursor, EditKind::Insert);
+        history.commit("h");
+        history.record("h", cursor, EditKind::Insert);
+        history.commit("he");
+        history.record("he", cursor, EditKind::Insert);
+        history.commit("hel");
+
+        let undone = history.undo("hel", cursor).expect("an undo step");
+
+        assert_eq!(undone.value, "");
+        assert!(history.undo("", cursor).is_none());
+    }
+
+    #[test]
+    fn history_undoes_and_redoes_separate_runs() {
+        let cursor = Cursor::default();
+        let mut history = History::default();
+
+        history.record("", cursor, EditKind::Insert);
+        history.commit("a");
+
+        history.break_group();
+
+        history.record("a", cursor, EditKind::Insert);
+        history.commit("ab");
+
+        let undone = history.undo("ab", cursor).expect("an undo step");
+        assert_eq!(undone.value, "a");
+
+        let redone = history.redo("a", cursor).expect("a redo step");
+        assert_eq!(redone.value, "ab");
+
+        assert!(history.redo("ab", cursor).is_none());
+    }
+
+    #[test]
+    fn history_does_not_group_other_edits() {
+        let cursor = Cursor::default();
+        let mut history = History::default();
+
+        history.record("", cursor, EditKind::Other);
+        history.commit("a");
+        history.record("a", cursor, EditKind::Other);
+        history.commit("ab");
+
+        let undone = history.undo("ab", cursor).expect("an undo step");
+
+        assert_eq!(undone.value, "a");
+    }
+
+    #[test]
+    fn history_forgets_redo_after_new_edit() {
+        let cursor = Cursor::default();
+        let mut history = History::default();
+
+        history.record("", cursor, EditKind::Insert);
+        history.commit("a");
+
+        let _ = history.undo("a", cursor).expect("an undo step");
+
+        history.record("", cursor, EditKind::Insert);
+
+        assert!(history.redo("", cursor).is_none());
+    }
+
+    #[test]
+    fn history_is_limited_in_size() {
+        let cursor = Cursor::default();
+        let mut history = History::default();
+
+        for i in 0..=MAX_UNDO_STEPS {
+            history.break_group();
+            history.record(&i.to_string(), cursor, EditKind::Insert);
+        }
+
+        let mut steps = 0;
+
+        while history.undo("", cursor).is_some() {
+            steps += 1;
+        }
+
+        assert_eq!(steps, MAX_UNDO_STEPS);
+    }
 }

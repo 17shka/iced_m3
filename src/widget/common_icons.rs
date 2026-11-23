@@ -1,35 +1,30 @@
+use iced::advanced::svg;
 use std::sync::LazyLock;
 
-use iced::advanced::svg;
+macro_rules! svg_handles {
+    ($($name:ident => $file:literal),* $(,)?) => {
+        $(
+            pub(crate) static $name: LazyLock<svg::Handle> = LazyLock::new(|| {
+                svg::Handle::from_memory(include_bytes!(concat!("../../resources/svg/", $file)))
+            });
+        )*
+    };
+}
 
-const CHECK_BYTES: &[u8] = include_bytes!("../../resources/svg/check.svg");
-pub(crate) static CHECK: LazyLock<svg::Handle> =
-    LazyLock::new(|| svg::Handle::from_memory(CHECK_BYTES));
-
-const CLOSE_BYTES: &[u8] = include_bytes!("../../resources/svg/close.svg");
-pub(crate) static CLOSE: LazyLock<svg::Handle> =
-    LazyLock::new(|| svg::Handle::from_memory(CLOSE_BYTES));
-
-const MENU_BYTES: &[u8] = include_bytes!("../../resources/svg/menu.svg");
-pub(crate) static MENU: LazyLock<svg::Handle> =
-    LazyLock::new(|| svg::Handle::from_memory(MENU_BYTES));
-
-const MENU_OPEN_BYTES: &[u8] = include_bytes!("../../resources/svg/menu_open.svg");
-pub(crate) static MENU_OPEN: LazyLock<svg::Handle> =
-    LazyLock::new(|| svg::Handle::from_memory(MENU_OPEN_BYTES));
-
-const ADD_BYTES: &[u8] = include_bytes!("../../resources/svg/add.svg");
-pub(crate) static ADD: LazyLock<svg::Handle> =
-    LazyLock::new(|| svg::Handle::from_memory(ADD_BYTES));
-
-const ARROW_RIGHT_BYTES: &[u8] = include_bytes!("../../resources/svg/arrow_right.svg");
-pub(crate) static ARROW_RIGHT: LazyLock<svg::Handle> =
-    LazyLock::new(|| svg::Handle::from_memory(ARROW_RIGHT_BYTES));
-
-const VISIBILITY_BYTES: &[u8] = include_bytes!("../../resources/svg/visibility.svg");
-pub(crate) static VISIBILITY: LazyLock<svg::Handle> =
-    LazyLock::new(|| svg::Handle::from_memory(VISIBILITY_BYTES));
-
-const VISIBILITY_OFF_BYTES: &[u8] = include_bytes!("../../resources/svg/visibility_off.svg");
-pub(crate) static VISIBILITY_OFF: LazyLock<svg::Handle> =
-    LazyLock::new(|| svg::Handle::from_memory(VISIBILITY_OFF_BYTES));
+svg_handles! {
+    CHECK => "check.svg",
+    CLOSE => "close.svg",
+    MENU => "menu.svg",
+    MENU_OPEN => "menu_open.svg",
+    ADD => "add.svg",
+    ARROW_RIGHT => "arrow_right.svg",
+    VISIBILITY => "visibility.svg",
+    VISIBILITY_OFF => "visibility_off.svg",
+    COPY => "content_copy.svg",
+    CUT => "content_cut.svg",
+    PASTE => "content_paste.svg",
+    SELECT_WORD => "highlight_alt.svg",
+    SELECT_ALL => "select_all.svg",
+    UNDO => "undo.svg",
+    REDO => "redo.svg",
+}

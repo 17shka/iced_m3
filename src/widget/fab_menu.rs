@@ -471,14 +471,18 @@ where
         layout: iced::advanced::Layout<'b>,
         _renderer: &Renderer,
         _viewport: &Rectangle,
-        _translation: Vector,
+        translation: Vector,
     ) -> Option<iced::advanced::overlay::Element<'b, Message, Theme, Renderer>> {
         let state = tree.state.downcast_ref::<State>();
 
         let is_animating = state.presented_progress > 0.0;
 
+        let mut base_bounds = layout.bounds();
+        base_bounds.x += translation.x;
+        base_bounds.y += translation.y;
+
         (state.is_expanded || is_animating).then_some(overlay::Element::new(Box::new(Overlay {
-            base_bounds: layout.bounds(),
+            base_bounds,
             tree,
             items: &mut self.items,
         })))

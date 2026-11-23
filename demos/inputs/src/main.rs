@@ -2,7 +2,10 @@ use iced::{
     Element, Font, Length, Task,
     widget::{column, container, text},
 };
-use iced_m3::theme::{ColorScheme, Mode, Theme};
+use iced_m3::{
+    theme::{ColorScheme, Mode, Theme},
+    widget::scrollable,
+};
 
 const APP_NAME: &str = "Inputs Demo";
 
@@ -30,16 +33,20 @@ impl State {
     fn view(&self) -> Element<'_, Message> {
         let theme_buttons = common::theme_switcher(&self.theme, Message::SetTheme);
 
+        let content = column![
+            text::Text::new(APP_NAME)
+                .font(fonts::text_bold())
+                .size(28.0)
+                .color(self.theme.on_surface()),
+            theme_buttons,
+            self.page.view(&self.theme).map(Message::Page),
+        ]
+        .spacing(24);
+
         container(
-            column![
-                text::Text::new(APP_NAME)
-                    .font(fonts::text_bold())
-                    .size(28.0)
-                    .color(self.theme.on_surface()),
-                theme_buttons,
-                self.page.view(&self.theme).map(Message::Page),
-            ]
-            .spacing(24),
+            scrollable(&self.theme, content)
+                .width(Length::Fill)
+                .height(Length::Fill),
         )
         .padding(24.0)
         .width(Length::Fill)

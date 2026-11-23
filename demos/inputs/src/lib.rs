@@ -11,8 +11,10 @@ pub enum Message {
     TextInputChanged(String),
     SecureInputChanged(String),
     SecureVisibilityToggled,
-    TextInputErrorToggle,
-    TextInputSubmitted,
+    ErrorInputChanged(String),
+    ErrorToggle,
+    SubmitInputChanged(String),
+    SubmitInputSubmitted,
     TextInputWithIconChanged(String),
     TextInputWithLabelChanged(String),
     TextInputAlignedChanged(String),
@@ -22,8 +24,10 @@ pub struct Page {
     text_input_value: String,
     secure_text_input_value: String,
     secure_visibility: bool,
-    text_input_error: bool,
-    text_input_submitted: String,
+    error_input_value: String,
+    error: bool,
+    submit_input_value: String,
+    submitted: Option<String>,
     text_input_with_icon: String,
     text_input_with_label: String,
     text_input_aligned: String,
@@ -35,8 +39,10 @@ impl Default for Page {
             text_input_value: String::new(),
             secure_text_input_value: String::new(),
             secure_visibility: false,
-            text_input_error: false,
-            text_input_submitted: String::new(),
+            error_input_value: String::new(),
+            error: false,
+            submit_input_value: String::new(),
+            submitted: None,
             text_input_with_icon: String::new(),
             text_input_with_label: String::new(),
             text_input_aligned: String::new(),
@@ -50,9 +56,12 @@ impl Page {
             Message::TextInputChanged(value) => self.text_input_value = value,
             Message::SecureInputChanged(value) => self.secure_text_input_value = value,
             Message::SecureVisibilityToggled => self.secure_visibility = !self.secure_visibility,
-            Message::TextInputErrorToggle => self.text_input_error = !self.text_input_error,
-            Message::TextInputSubmitted => {
-                self.text_input_submitted = self.text_input_value.clone();
+            Message::ErrorInputChanged(value) => self.error_input_value = value,
+            Message::ErrorToggle => self.error = !self.error,
+            Message::SubmitInputChanged(value) => self.submit_input_value = value,
+            Message::SubmitInputSubmitted => {
+                self.submitted = Some(self.submit_input_value.clone());
+                self.submit_input_value.clear();
             }
             Message::TextInputWithIconChanged(v) => self.text_input_with_icon = v,
             Message::TextInputWithLabelChanged(v) => self.text_input_with_label = v,
@@ -67,6 +76,11 @@ impl Page {
     pub fn view<'a>(&self, theme: &'a Theme) -> Element<'a, Message> {
         column![
             section_header("Text Input", theme),
+            text(
+                "Right-click the input to open its context menu. Press Cmd/Ctrl+Z to undo \
+                 and Cmd/Ctrl+Shift+Z (or Ctrl+Y) to redo.",
+            )
+            .color(theme.on_surface_variant()),
             TextInput::new("Type here...", &self.text_input_value, theme)
                 .on_input(Message::TextInputChanged)
                 .width(300.0),
@@ -78,15 +92,15 @@ impl Page {
                 .width(300.0),
             section_header("Error Input", theme),
             row![
-                TextInput::new("Type to trigger...", &self.text_input_value, theme)
-                    .on_input(Message::TextInputChanged)
-                    .error(self.text_input_error)
+                TextInput::new("Type to trigger...", &self.error_input_value, theme)
+                    .on_input(Message::ErrorInputChanged)
+                    .error(self.error)
                     .width(300.0),
                 iced_m3::widget::button(
                     button::Style::filled(theme, Accent::Primary),
                     button::Content::Label("Toggle Error".into()),
                 )
-                .on_press(Message::TextInputErrorToggle),
+                .on_press(Message::ErrorToggle),
             ]
             .spacing(8)
             .align_y(Alignment::Center),
@@ -107,11 +121,15 @@ impl Page {
                 .with_label_text("Label", theme.primary_container())
                 .width(300.0),
             section_header("Text input on submit", theme),
-            TextInput::new("Press Enter...", &self.text_input_value, theme)
-                .on_input(Message::TextInputChanged)
-                .on_submit(Message::TextInputSubmitted)
+            TextInput::new("Press Enter...", &self.submit_input_value, theme)
+                .on_input(Message::SubmitInputChanged)
+                .on_submit(Message::SubmitInputSubmitted)
                 .width(300.0),
-            text(format!("Submitted: {}", self.text_input_submitted)).color(theme.on_surface()),
+            text(match &self.submitted {
+                Some(value) => format!("Submitted: \"{value}\""),
+                None => "Press Enter to submit".to_owned(),
+            })
+            .color(theme.on_surface_variant()),
             section_header("Text input aligned", theme),
             TextInput::new("Centered...", &self.text_input_aligned, theme)
                 .on_input(Message::TextInputAlignedChanged)
