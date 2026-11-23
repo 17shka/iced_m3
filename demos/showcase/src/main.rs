@@ -39,6 +39,8 @@ enum Message {
     Badge(badges::Message),
     NavRail(::navrail::Message),
     Select(select::Message),
+    Localization(localization::Message),
+    SystemTheme(Mode),
     FontsLoaded,
 }
 
@@ -64,12 +66,13 @@ struct State {
 
     shapes_page: shapes::Page,
     select_page: select::Page,
+    localization_page: localization::Page,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
-            theme: Theme::default(Mode::Dark),
+            theme: Theme::default(Mode::System),
             tab: Tab::default(),
             navrail_expanded: true,
             buttons_page: buttons::Page::default(),
@@ -85,11 +88,12 @@ impl Default for State {
             checkbox_page: checkbox::Page::default(),
             switch_page: ::switch::Page::default(),
             menu_page: menu::Page::default(),
-            badge_page: badges::Page::default(),
+            badge_page: badges::Page,
             navrail_page: ::navrail::Page::default(),
 
             shapes_page: shapes::Page::default(),
             select_page: select::Page::default(),
+            localization_page: localization::Page::default(),
         }
     }
 }
@@ -118,6 +122,8 @@ impl State {
             Message::Badge(msg) => self.badge_page.update(msg),
             Message::NavRail(msg) => self.navrail_page.update(msg),
             Message::Select(msg) => self.select_page.update(msg),
+            Message::Localization(msg) => self.localization_page.update(msg),
+            Message::SystemTheme(mode) => self.theme.system_mode = mode,
             // Fonts are loaded asynchronously; this message exists so the app
             // redraws (and re-measures text) once they are available. Without
             // it the first frame, rendered before the fonts are registered,
@@ -166,7 +172,8 @@ impl State {
                 .size(24.0)
                 .color(self.theme.on_surface()),
             Space::new().width(Length::Fill),
-            common::theme_switcher(&self.theme, Message::SetTheme)
+            iced_m3::widget::theme_select(&self.theme, self.theme.mode, Message::SetTheme)
+                .width(Length::Fixed(220.0))
         ]
         .align_y(Alignment::Center);
 
@@ -189,6 +196,10 @@ impl State {
             Tab::Shapes => self.shapes_page.view(&self.theme).map(Message::Shapes),
             Tab::Sliders => self.sliders_page.view(&self.theme).map(Message::Sliders),
             Tab::Switch => self.switch_page.view(&self.theme).map(Message::Switch),
+            Tab::Localization => self
+                .localization_page
+                .view(&self.theme)
+                .map(Message::Localization),
         };
 
         // The navigation rail page must not be wrapped in a scrollable: the
@@ -222,23 +233,37 @@ impl State {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        match self.tab {
+        let page = match self.tab {
             Tab::Progress => self.progress_page.subscription().map(Message::Progress),
+            Tab::Localization => self
+                .localization_page
+                .subscription()
+                .map(Message::Localization),
             _ => Subscription::none(),
-        }
+        };
+
+        Subscription::batch([
+            page,
+            iced::system::theme_changes().map(|mode| Message::SystemTheme(mode.into())),
+        ])
     }
 }
 
 fn main() -> iced::Result {
+    localization::init();
+
     iced::application(
         || {
             (
                 State::default(),
-                Task::batch(
-                    fonts::get_fonts()
-                        .into_iter()
-                        .map(|b| iced::font::load(b).map(|_| Message::FontsLoaded)),
-                ),
+                Task::batch([
+                    Task::batch(
+                        fonts::get_fonts()
+                            .into_iter()
+                            .map(|b| iced::font::load(b).map(|_| Message::FontsLoaded)),
+                    ),
+                    iced::system::theme().map(|mode| Message::SystemTheme(mode.into())),
+                ]),
             )
         },
         State::update,

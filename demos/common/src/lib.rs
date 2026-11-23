@@ -5,11 +5,11 @@ pub mod catalog;
 
 use iced::{
     Element, Font, Length, Subscription, Task,
-    widget::{column, container, row, text::Text},
+    widget::{column, container, text::Text},
 };
 use iced_m3::{
-    theme::{Accent, ColorScheme, Mode, Theme},
-    widget::{button, scrollable},
+    theme::{ColorScheme, Mode, Theme},
+    widget::{scrollable, theme_select},
 };
 
 pub trait Demo: Default + 'static {
@@ -38,16 +38,20 @@ struct App<D: Demo> {
 enum Message<M> {
     Page(M),
     SetTheme(Mode),
+    SystemTheme(Mode),
 }
 
 impl<D: Demo> App<D> {
     fn boot() -> (Self, Task<Message<D::Message>>) {
         (
             Self {
-                theme: Theme::default(Mode::Dark),
+                theme: Theme::default(Mode::System),
                 page: D::default(),
             },
-            load_fonts(),
+            Task::batch([
+                load_fonts(),
+                iced::system::theme().map(|mode| Message::SystemTheme(mode.into())),
+            ]),
         )
     }
 
@@ -61,7 +65,8 @@ impl<D: Demo> App<D> {
                     .font(fonts::text_bold())
                     .size(D::TITLE_SIZE)
                     .color(self.theme.on_surface()),
-                theme_switcher(&self.theme, Message::SetTheme),
+                theme_select(&self.theme, self.theme.mode, Message::SetTheme)
+                    .width(Length::Fixed(220.0)),
                 page,
             ]
             .spacing(24.0)
@@ -91,12 +96,16 @@ impl<D: Demo> App<D> {
         match message {
             Message::Page(message) => self.page.update(message),
             Message::SetTheme(mode) => self.theme.mode = mode,
+            Message::SystemTheme(mode) => self.theme.system_mode = mode,
         }
         Task::none()
     }
 
     fn subscription(&self) -> Subscription<Message<D::Message>> {
-        self.page.subscription().map(Message::Page)
+        Subscription::batch([
+            self.page.subscription().map(Message::Page),
+            iced::system::theme_changes().map(|mode| Message::SystemTheme(mode.into())),
+        ])
     }
 }
 
@@ -132,30 +141,6 @@ fn load_fonts<Message: Send + 'static>() -> Task<Message> {
             .into_iter()
             .map(|bytes| iced::font::load(bytes).discard()),
     )
-}
-
-#[must_use]
-pub fn theme_switcher<'a, Message>(
-    theme: &impl ColorScheme,
-    on_change: impl Fn(Mode) -> Message,
-) -> Element<'a, Message>
-where
-    Message: Clone + 'a,
-{
-    row![
-        button(
-            button::Style::filled(theme, Accent::Primary),
-            button::Content::Label("Light".into()),
-        )
-        .on_press(on_change(Mode::Light)),
-        button(
-            button::Style::filled(theme, Accent::Secondary),
-            button::Content::Label("Dark".into()),
-        )
-        .on_press(on_change(Mode::Dark)),
-    ]
-    .spacing(8)
-    .into()
 }
 
 /// A bold section heading used by the demo pages.

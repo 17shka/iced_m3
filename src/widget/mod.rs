@@ -33,6 +33,9 @@ mod wrappers;
 
 pub use common_types::*;
 pub use scrollable::scrollable;
+#[cfg(feature = "rust-i18n")]
+pub use select::language_select;
+pub use select::theme_select;
 pub use wrappers::*;
 
 use std::ops::RangeInclusive;

@@ -1,0 +1,19 @@
+app:
+  language: "Language"
+  language_placeholder: "Choose a language"
+  intro: "The application owns the translations. iced_m3 only bundles an English fallback for when the i18n feature is disabled."
+  text_input: "Text input"
+  text_input_hint: "Right-click the input to open the context menu built by the library."
+  text_placeholder: "Type here..."
+  select: "Select"
+  select_placeholder: "Pick an option"
+  dialog: "Dialog"
+  open_dialog: "Open dialog"
+  dialog_body: "This dialog uses the default title supplied by the library."
+  dialog_close: "Close"
+  option:
+    alpha: "Alpha"
+    beta: "Beta"
+    gamma: "Gamma"
+
+# English needs no `iced_m3` keys: the library falls back to its bundled text.

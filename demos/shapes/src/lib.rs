@@ -14,8 +14,9 @@ pub enum Message {
     Select(Shape),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Shape {
+    #[default]
     Circle,
     Square,
     Slanted,
@@ -172,12 +173,6 @@ impl Shape {
             Self::Bun => shapes::bun(),
             Self::Heart => shapes::heart(),
         }
-    }
-}
-
-impl Default for Shape {
-    fn default() -> Self {
-        Self::Circle
     }
 }
 

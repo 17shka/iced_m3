@@ -378,14 +378,30 @@ impl_color_scheme! {
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Mode {
     #[default]
+    System,
     Light,
     Dark,
+}
+
+impl Mode {
+    pub fn is_system(self) -> bool {
+        matches!(self, Self::System)
+    }
+
+    pub fn resolve(self, system: Mode) -> Mode {
+        match (self, system) {
+            (Mode::System, Mode::Dark) => Mode::Dark,
+            (Mode::System, Mode::Light | Mode::System) => Mode::Light,
+            (mode, _) => mode,
+        }
+    }
 }
 
 impl From<iced::theme::Mode> for Mode {
     fn from(value: iced::theme::Mode) -> Self {
         match value {
-            iced::theme::Mode::None | iced::theme::Mode::Light => Self::Light,
+            iced::theme::Mode::None => Self::System,
+            iced::theme::Mode::Light => Self::Light,
             iced::theme::Mode::Dark => Self::Dark,
         }
     }
@@ -396,14 +412,19 @@ pub struct Theme {
     pub dark: Palette,
     pub light: Palette,
     pub mode: Mode,
+    pub system_mode: Mode,
 }
 
 impl Theme {
     pub fn current(&self) -> &Palette {
-        match self.mode {
-            Mode::Light => &self.light,
+        match self.resolved_mode() {
+            Mode::Light | Mode::System => &self.light,
             Mode::Dark => &self.dark,
         }
+    }
+
+    pub fn resolved_mode(&self) -> Mode {
+        self.mode.resolve(self.system_mode)
     }
 
     pub fn default(mode: Mode) -> Self {
@@ -411,6 +432,7 @@ impl Theme {
             dark: Palette::default_dark(),
             light: Palette::default_light(),
             mode,
+            system_mode: Mode::Light,
         }
     }
 }

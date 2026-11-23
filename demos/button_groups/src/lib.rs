@@ -12,18 +12,10 @@ pub enum Message {
     ToggleButton(usize),
 }
 
+#[derive(Default)]
 pub struct Page {
     selected: usize,
     buttons: [bool; 3],
-}
-
-impl Default for Page {
-    fn default() -> Self {
-        Self {
-            selected: 0,
-            buttons: [false, false, false],
-        }
-    }
 }
 
 impl Page {

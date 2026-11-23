@@ -23,6 +23,7 @@ pub enum Message {
     TextInputAlignedChanged(String),
 }
 
+#[derive(Default)]
 pub struct Page {
     text_input_value: String,
     secure_text_input_value: String,
@@ -34,23 +35,6 @@ pub struct Page {
     text_input_with_icon: String,
     text_input_with_label: String,
     text_input_aligned: String,
-}
-
-impl Default for Page {
-    fn default() -> Self {
-        Self {
-            text_input_value: String::new(),
-            secure_text_input_value: String::new(),
-            secure_visibility: false,
-            error_input_value: String::new(),
-            error: false,
-            submit_input_value: String::new(),
-            submitted: None,
-            text_input_with_icon: String::new(),
-            text_input_with_label: String::new(),
-            text_input_aligned: String::new(),
-        }
-    }
 }
 
 impl Page {

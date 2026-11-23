@@ -1,9 +1,3 @@
-//! A right-click context menu shared by editable text widgets.
-//!
-//! The menu is generic over a [`ContextMenuHost`], which exposes the editable value, its caret
-//! and the edit operations the menu can perform. This lets both [`TextInput`](super::TextInput)
-//! and the search field of the select widget reuse the same menu instead of duplicating it.
-
 use iced::{
     Border, Color, Event, Point, Radians, Rectangle, Size, Vector,
     advanced::{
@@ -22,10 +16,8 @@ use crate::{
     },
 };
 
-/// The runtime state of an open context menu.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct ContextMenu {
-    /// Where the menu is anchored, in window coordinates.
     pub(crate) position: Point,
     pub(crate) pressed: Option<Action>,
     pub(crate) is_pressing: bool,
@@ -33,7 +25,6 @@ pub(crate) struct ContextMenu {
 }
 
 impl ContextMenu {
-    /// Creates a closed-for-input menu anchored at the given position.
     pub(crate) fn new(position: Point) -> Self {
         Self {
             position,
@@ -44,50 +35,33 @@ impl ContextMenu {
     }
 }
 
-/// The editable text a [`ContextMenuOverlay`] acts on.
 pub(crate) trait ContextMenuHost<Message, Renderer> {
-    /// The current contents.
     fn value(&self) -> &Value;
-    /// The current caret and selection.
     fn cursor(&self) -> Cursor;
-    /// Whether the text can be edited at all.
     fn is_editable(&self) -> bool;
-    /// Whether the contents are hidden (which disables copying).
     fn is_secure(&self) -> bool {
         false
     }
-    /// Whether an undo step is available.
     fn can_undo(&self) -> bool;
-    /// Whether a redo step is available.
     fn can_redo(&self) -> bool;
 
-    /// The selected grapheme range, if any.
     fn selection(&self) -> Option<(usize, usize)> {
         self.cursor().selection(self.value())
     }
 
-    /// The selected text, if any.
     fn selected_text(&self) -> Option<String> {
         self.selection()
             .map(|(start, end)| self.value().select(start, end).to_string())
     }
 
-    /// Removes the current selection, returning the message to emit.
     fn delete_selection(&mut self, renderer: &Renderer) -> Option<Message>;
-    /// Replaces the selection with the given content, returning the message to emit.
     fn paste(&mut self, content: Value, renderer: &Renderer) -> Option<Message>;
-    /// Undoes the last edit, returning the message to emit.
     fn undo(&mut self, renderer: &Renderer) -> Option<Message>;
-    /// Redoes the last undone edit, returning the message to emit.
     fn redo(&mut self, renderer: &Renderer) -> Option<Message>;
-    /// Selects the word under the caret.
     fn select_word(&mut self);
-    /// Selects everything.
     fn select_all(&mut self);
 
-    /// The open menu, if any.
     fn menu(&self) -> Option<ContextMenu>;
-    /// Stores the open menu.
     fn set_menu(&mut self, menu: Option<ContextMenu>);
 }
 
@@ -109,7 +83,6 @@ const CONTEXT_MENU_ENTRIES: [ContextMenuEntry; 9] = [
     ContextMenuEntry::Item(Action::Redo),
 ];
 
-/// An [`overlay::Overlay`] that draws and drives a [`ContextMenu`].
 pub(crate) struct ContextMenuOverlay<H, Renderer>
 where
     Renderer: text::Renderer,
@@ -117,7 +90,6 @@ where
     pub(crate) host: H,
     pub(crate) style: menu::Style,
     pub(crate) font: Option<Renderer::Font>,
-    /// Translation applied to the anchor position, used by overlays inside scrolling containers.
     pub(crate) translation: Vector,
 }
 
@@ -380,7 +352,7 @@ where
 
                     renderer.fill_text(
                         text::Text {
-                            content: item.label().to_owned(),
+                            content: item.label().into_owned(),
                             bounds: label_bounds.size(),
                             size: menu::constants::ITEM_LABEL_FONT_SIZE,
                             line_height: text::LineHeight::Absolute(

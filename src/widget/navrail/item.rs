@@ -296,11 +296,7 @@ where
         let icon_node =
             Node::new(Size::new(ICON_SIZE, ICON_SIZE)).move_to(Point::new(icon_x, icon_y));
 
-        let small_label_y = if self.hide_labels_when_collapsed {
-            pill_y + pill_height + ITEM_SMALL_ICON_LABEL_SPACE
-        } else {
-            pill_y + pill_height + ITEM_SMALL_ICON_LABEL_SPACE
-        };
+        let small_label_y = pill_y + pill_height + ITEM_SMALL_ICON_LABEL_SPACE;
         let small_label_node = Node::new(small_bounds).move_to(Point::new(
             (pill_x + (INDICATOR_SMALL_WIDTH - small_bounds.width) / 2.0).round(),
             small_label_y,

@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use iced::{
     Alignment, Border, Color, Element, Event, Font, Length, Padding, Pixels, Point, Rectangle,
     Size, Transformation, Vector,
@@ -125,7 +123,7 @@ impl<'a, Message> Dialog<'a, Message> {
             style,
             icon: None,
             icon_font: None,
-            title: Cow::Borrowed("Title"),
+            title: crate::i18n::dialog_title(),
             title_font: None,
             body: body.into(),
             buttons,

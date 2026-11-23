@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::fmt;
 
 use iced::advanced::svg;
@@ -27,15 +28,18 @@ impl Action {
         Self::Redo,
     ];
 
-    pub fn label(self) -> &'static str {
+
+    pub fn label(self) -> Cow<'static, str> {
+        use crate::i18n;
+
         match self {
-            Self::Undo => "Undo",
-            Self::Redo => "Redo",
-            Self::Copy => "Copy",
-            Self::Cut => "Cut",
-            Self::Paste => "Paste",
-            Self::SelectWord => "Select word",
-            Self::SelectAll => "Select all",
+            Self::Undo => i18n::text_input_undo(),
+            Self::Redo => i18n::text_input_redo(),
+            Self::Copy => i18n::text_input_copy(),
+            Self::Cut => i18n::text_input_cut(),
+            Self::Paste => i18n::text_input_paste(),
+            Self::SelectWord => i18n::text_input_select_word(),
+            Self::SelectAll => i18n::text_input_select_all(),
         }
     }
 

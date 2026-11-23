@@ -21,24 +21,13 @@ pub enum Message {
     SetIconMode(IconMode),
 }
 
+#[derive(Default)]
 pub struct Demo {
     toggled_demo: bool,
     toggled_never: bool,
     toggled_when_selected: bool,
     toggled_always: bool,
     icon_mode: IconMode,
-}
-
-impl Default for Demo {
-    fn default() -> Self {
-        Self {
-            toggled_demo: false,
-            toggled_never: false,
-            toggled_when_selected: false,
-            toggled_always: false,
-            icon_mode: IconMode::default(),
-        }
-    }
 }
 
 fn switch_row<'a>(

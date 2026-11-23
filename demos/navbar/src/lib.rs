@@ -8,14 +8,9 @@ pub enum Message {
     TabChanged(usize),
 }
 
+#[derive(Default)]
 pub struct Page {
     active_index: usize,
-}
-
-impl Default for Page {
-    fn default() -> Self {
-        Self { active_index: 0 }
-    }
 }
 
 impl Page {

@@ -75,17 +75,15 @@ impl<P: text::Paragraph> State<P> {
 
     // Chase cursor during continuous drag, then step all springs.
     fn step(&mut self, now: Instant, continuous_drag: bool) {
-        if continuous_drag {
-            if let Some((thumb, Some(target))) = self.drag {
-                let spring = match thumb {
-                    Thumb::Lower => &mut self.lower_position_spring,
-                    Thumb::Upper => &mut self.upper_position_spring,
-                };
-                let delta = now.duration_since(spring.spring.time).as_secs_f32();
-                let decay = 1.0 - (-delta / DRAG_CHASE_DECAY).exp();
-                self.drag_display += (target - self.drag_display) * decay;
-                spring.reset(self.drag_display, now);
-            }
+        if continuous_drag && let Some((thumb, Some(target))) = self.drag {
+            let spring = match thumb {
+                Thumb::Lower => &mut self.lower_position_spring,
+                Thumb::Upper => &mut self.upper_position_spring,
+            };
+            let delta = now.duration_since(spring.spring.time).as_secs_f32();
+            let decay = 1.0 - (-delta / DRAG_CHASE_DECAY).exp();
+            self.drag_display += (target - self.drag_display) * decay;
+            spring.reset(self.drag_display, now);
         }
 
         self.common.step(now);
@@ -804,9 +802,8 @@ where
                         && let Some(new_value) = locate(position)
                     {
                         let current_value = self.value_of(thumb);
-                        let value_changed = (current_value.into() as f64 - new_value.into() as f64)
-                            .abs()
-                            > f64::EPSILON;
+                        let value_changed =
+                            (current_value.into() - new_value.into()).abs() > f64::EPSILON;
 
                         let previous = (self.lower, self.upper);
                         if value_changed {
@@ -825,7 +822,7 @@ where
 
                             if !continuous_drag {
                                 let new_target =
-                                    value_factor(self.value_of(state.active), &self.range) as f32;
+                                    value_factor(self.value_of(state.active), &self.range);
                                 state
                                     .position_spring_mut(state.active)
                                     .set_target(new_target, now);
@@ -842,7 +839,7 @@ where
                         let drag_factor = if continuous_drag {
                             continuous_factor
                         } else {
-                            value_factor(new_value, &self.range) as f32
+                            value_factor(new_value, &self.range)
                         };
                         if !continuous_drag {
                             state.drag_display = drag_factor;
@@ -1167,7 +1164,7 @@ where
         let active_factor = if state.drag.is_some() {
             state.position_spring(state.active)
         } else {
-            value_factor(self.value_of(state.active), &self.range) as f32
+            value_factor(self.value_of(state.active), &self.range)
         };
         let active_handle = handle_rect(
             self.axis,

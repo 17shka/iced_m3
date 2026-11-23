@@ -34,6 +34,16 @@ use crate::{
     },
 };
 
+#[cfg(feature = "rust-i18n")]
+mod language;
+
+#[cfg(feature = "rust-i18n")]
+pub use language::language_select;
+
+mod theme;
+
+pub use theme::theme_select;
+
 pub(crate) mod constants {
     use iced::Pixels;
 
@@ -66,8 +76,6 @@ pub(crate) mod constants {
     pub const ITEM_ICON_SLOT: f32 = 20.0;
     pub const ITEM_ICON_SPACING: f32 = 8.0;
 
-    /// Total height of an [`Item::Separator`](super::Item::Separator) row, including the
-    /// breathing room around its rule.
     pub const SEPARATOR_HEIGHT: Pixels = Pixels(9.0);
     pub const SEPARATOR_RULE_HEIGHT: f32 = 1.0;
 
@@ -1967,7 +1975,7 @@ where
 
                 let (content, color, position) = if self.state.query.is_empty() {
                     (
-                        "Search".to_owned(),
+                        crate::i18n::select_search().into_owned(),
                         self.style.field_placeholder,
                         text_x_base,
                     )
@@ -2568,9 +2576,7 @@ where
         }
 
         if !self.state.is_open {
-            // The menu is still fading out: it is no longer interactive, but it still covers the
-            // widgets underneath, so keep the plain arrow instead of leaking their cursor.
-            return mouse::Interaction::Idle;
+            return mouse::Interaction::None;
         }
 
         if self
