@@ -2661,19 +2661,17 @@ where
                     let shortcut_line_height = menu::constants::ITEM_SUPPORTING_TEXT_LINE_HEIGHT.0;
 
                     let shortcut_width = shortcut.as_ref().map_or(0.0, |shortcut| {
-                        <Renderer as text::Renderer>::Paragraph::with_text(text::Text {
-                            content: shortcut.as_str(),
-                            bounds: Size::new(child_bounds.width, shortcut_line_height),
-                            size: menu::constants::ITEM_SUPPORTING_TEXT_SIZE,
-                            line_height: text::LineHeight::Absolute(
+                        crate::widget::internal::text::paragraph(
+                            renderer,
+                            shortcut.as_str(),
+                            Size::new(child_bounds.width, shortcut_line_height),
+                            menu::constants::ITEM_SUPPORTING_TEXT_SIZE,
+                            text::LineHeight::Absolute(
                                 menu::constants::ITEM_SUPPORTING_TEXT_LINE_HEIGHT,
                             ),
-                            font,
-                            align_x: text::Alignment::Left,
-                            align_y: alignment::Vertical::Top,
-                            shaping: text::Shaping::Advanced,
-                            wrapping: text::Wrapping::None,
-                        })
+                            Some(font),
+                            alignment::Vertical::Top,
+                        )
                         .min_bounds()
                         .width
                     });

@@ -207,6 +207,10 @@ impl Page {
         }
     }
 
+    pub fn subscription(&self) -> iced::Subscription<Message> {
+        iced::Subscription::none()
+    }
+
     pub fn view(&self, theme: &Theme) -> Element<'_, Message> {
         let shape_cards = Shape::ALL.iter().map(|shape| {
             let is_selected = *shape == self.selected;
@@ -256,3 +260,5 @@ impl Page {
         .into()
     }
 }
+
+common::demo!(Page, Message, "Shapes Demo", bare);

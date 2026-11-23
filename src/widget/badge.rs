@@ -167,17 +167,15 @@ where
 
                 let state = tree.state.downcast_mut::<State<Renderer::Paragraph>>();
 
-                let paragraph = <Renderer as text::Renderer>::Paragraph::with_text(text::Text {
-                    content: label,
-                    bounds: Size::INFINITE,
-                    size: Pixels(LABEL_FONT_SIZE),
-                    line_height: text::LineHeight::Relative(1.0),
-                    font: self.label_font.unwrap_or(renderer.default_font()),
-                    shaping: text::Shaping::Advanced,
-                    wrapping: text::Wrapping::None,
-                    align_x: text::Alignment::Left,
-                    align_y: iced::alignment::Vertical::Top,
-                });
+                let paragraph = super::internal::text::paragraph(
+                    renderer,
+                    label,
+                    Size::INFINITE,
+                    Pixels(LABEL_FONT_SIZE),
+                    text::LineHeight::Relative(1.0),
+                    self.label_font,
+                    iced::alignment::Vertical::Top,
+                );
 
                 let width = (paragraph.min_bounds().width + 2.0 * BADGE_CONTENT_PADDING)
                     .max(LARGE_LABEL_SIZE);

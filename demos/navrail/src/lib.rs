@@ -183,3 +183,5 @@ impl Page {
         .into()
     }
 }
+
+common::demo!(Page, Message, "Navrail Demo", fill);

@@ -12,7 +12,7 @@ use iced::{
         widget::{Tree, tree},
     },
     border::Radius,
-    padding, touch,
+    padding,
 };
 use iced_widget::text;
 
@@ -23,7 +23,12 @@ use crate::{
     },
     style::{DISABLED_STATE_LAYER_OPACITY, Elevation, StateLayer, shadow},
     theme::{Accent, ColorScheme},
-    widget::{self, Action, hybrid_icon::Icon, ripple::Ripple},
+    widget::{
+        self, Action,
+        hybrid_icon::Icon,
+        internal::interaction::{self, PressUpdate},
+        ripple::Ripple,
+    },
 };
 
 pub(crate) mod constants {
@@ -128,6 +133,34 @@ impl Interpolable for StateStyle {
     }
 }
 
+fn disabled_style(theme: &(impl ColorScheme + ?Sized)) -> StateStyle {
+    StateStyle {
+        container: theme.on_surface().scale_alpha(DISABLED_CONTAINER_OPACITY),
+        label: theme.on_surface().scale_alpha(DISABLED_CONTENT_OPACITY),
+        icon: theme.on_surface().scale_alpha(DISABLED_CONTENT_OPACITY),
+        outline: Outline::default(),
+    }
+}
+
+fn transparent_disabled_style(theme: &(impl ColorScheme + ?Sized)) -> StateStyle {
+    StateStyle {
+        container: Color::TRANSPARENT,
+        ..disabled_style(theme)
+    }
+}
+
+fn outlined_disabled_style(theme: &(impl ColorScheme + ?Sized), container: Color) -> StateStyle {
+    StateStyle {
+        container,
+        label: theme.on_surface().scale_alpha(DISABLED_CONTENT_OPACITY),
+        icon: theme.on_surface().scale_alpha(DISABLED_CONTENT_OPACITY),
+        outline: Outline {
+            width: 1.0,
+            color: theme.outline_variant(),
+        },
+    }
+}
+
 /// Elevation values for the button container for specific button states.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ElevationStates {
@@ -182,12 +215,7 @@ pub struct Style {
 
 impl Style {
     pub fn elevated(theme: &(impl ColorScheme + ?Sized), accent: Accent) -> Self {
-        let disabled = StateStyle {
-            container: theme.on_surface().scale_alpha(DISABLED_CONTAINER_OPACITY),
-            label: theme.on_surface().scale_alpha(DISABLED_CONTENT_OPACITY),
-            icon: theme.on_surface().scale_alpha(DISABLED_CONTENT_OPACITY),
-            outline: Outline::default(),
-        };
+        let disabled = disabled_style(theme);
         Self {
             regular: StateStyle {
                 container: theme.surface_container_low(),
@@ -224,12 +252,7 @@ impl Style {
     }
 
     pub fn filled(theme: &(impl ColorScheme + ?Sized), accent: Accent) -> Self {
-        let disabled = StateStyle {
-            container: theme.on_surface().scale_alpha(DISABLED_CONTAINER_OPACITY),
-            label: theme.on_surface().scale_alpha(DISABLED_CONTENT_OPACITY),
-            icon: theme.on_surface().scale_alpha(DISABLED_CONTENT_OPACITY),
-            outline: Outline::default(),
-        };
+        let disabled = disabled_style(theme);
         Self {
             regular: StateStyle {
                 container: accent.color(theme),
@@ -260,12 +283,7 @@ impl Style {
     }
 
     pub fn tonal(theme: &(impl ColorScheme + ?Sized), accent: Accent) -> Self {
-        let disabled = StateStyle {
-            container: theme.on_surface().scale_alpha(DISABLED_CONTAINER_OPACITY),
-            label: theme.on_surface().scale_alpha(DISABLED_CONTENT_OPACITY),
-            icon: theme.on_surface().scale_alpha(DISABLED_CONTENT_OPACITY),
-            outline: Outline::default(),
-        };
+        let disabled = disabled_style(theme);
         Self {
             regular: StateStyle {
                 container: accent.color_container(theme),
@@ -296,6 +314,11 @@ impl Style {
     }
 
     pub fn outlined(theme: &(impl ColorScheme + ?Sized), accent: Accent) -> Self {
+        let disabled = outlined_disabled_style(theme, Color::TRANSPARENT);
+        let disabled_selected = outlined_disabled_style(
+            theme,
+            theme.on_surface().scale_alpha(DISABLED_CONTAINER_OPACITY),
+        );
         Self {
             regular: StateStyle {
                 container: Color::TRANSPARENT,
@@ -324,33 +347,9 @@ impl Style {
                     color: theme.outline_variant(),
                 },
             },
-            disabled: StateStyle {
-                container: Color::TRANSPARENT,
-                label: theme.on_surface().scale_alpha(DISABLED_CONTENT_OPACITY),
-                icon: theme.on_surface().scale_alpha(DISABLED_CONTENT_OPACITY),
-                outline: Outline {
-                    width: 1.0,
-                    color: theme.outline_variant(),
-                },
-            },
-            disabled_unselected: StateStyle {
-                container: Color::TRANSPARENT,
-                label: theme.on_surface().scale_alpha(DISABLED_CONTENT_OPACITY),
-                icon: theme.on_surface().scale_alpha(DISABLED_CONTENT_OPACITY),
-                outline: Outline {
-                    width: 1.0,
-                    color: theme.outline_variant(),
-                },
-            },
-            disabled_selected: StateStyle {
-                container: theme.on_surface().scale_alpha(DISABLED_CONTAINER_OPACITY),
-                label: theme.on_surface().scale_alpha(DISABLED_CONTENT_OPACITY),
-                icon: theme.on_surface().scale_alpha(DISABLED_CONTENT_OPACITY),
-                outline: Outline {
-                    width: 1.0,
-                    color: theme.outline_variant(),
-                },
-            },
+            disabled,
+            disabled_unselected: disabled,
+            disabled_selected,
             elevation: ElevationStates::new(theme.shadow()),
             state_layer: StateLayer::new(accent.color(theme)),
             state_layer_unselected: StateLayer::new(theme.on_surface_variant()),
@@ -365,12 +364,7 @@ impl Style {
             icon: accent.color(theme),
             outline: Outline::default(),
         };
-        let disabled = StateStyle {
-            container: theme.on_surface().scale_alpha(DISABLED_CONTAINER_OPACITY),
-            label: theme.on_surface().scale_alpha(DISABLED_CONTENT_OPACITY),
-            icon: theme.on_surface().scale_alpha(DISABLED_CONTENT_OPACITY),
-            outline: Outline::default(),
-        };
+        let disabled = transparent_disabled_style(theme);
         Self {
             regular,
             unselected: regular,
@@ -935,23 +929,15 @@ where
         let shrinked_limits = limits.shrink(limits_shrink);
 
         if let Some(Icon::Text { text, font }) = self.content.get_icon() {
-            self.icon_paragraph = Some(
-                <Renderer as iced::advanced::text::Renderer>::Paragraph::with_text(
-                    iced::advanced::text::Text {
-                        content: text,
-                        bounds: shrinked_limits.max(),
-                        size: self.size.icon_size,
-                        line_height: text::LineHeight::Absolute(self.size.icon_size),
-                        font: font
-                            .map(Renderer::Font::from)
-                            .unwrap_or_else(|| renderer.default_font()),
-                        shaping: text::Shaping::Advanced,
-                        wrapping: text::Wrapping::None,
-                        align_x: text::Alignment::Left,
-                        align_y: iced::alignment::Vertical::Top,
-                    },
-                ),
-            );
+            self.icon_paragraph = Some(super::internal::text::paragraph(
+                renderer,
+                text,
+                shrinked_limits.max(),
+                self.size.icon_size,
+                text::LineHeight::Absolute(self.size.icon_size),
+                font.map(Renderer::Font::from),
+                iced::alignment::Vertical::Top,
+            ));
         }
 
         let contains_icon = matches!(&self.content, Content::Icon(_) | Content::Full { .. });
@@ -962,21 +948,14 @@ where
 
         let paragraph = if self.size.label_size.0 > 0.0 {
             self.content.get_label().map(|label| {
-                <Renderer as iced::advanced::text::Renderer>::Paragraph::with_text(
-                    iced::advanced::text::Text {
-                        content: label,
-                        bounds: shrinked_limits.max(),
-                        size: self.size.label_size,
-                        line_height: text::LineHeight::Relative(1.0),
-                        font: self
-                            .label_font
-                            .map(Renderer::Font::from)
-                            .unwrap_or_else(|| renderer.default_font()),
-                        shaping: text::Shaping::Advanced,
-                        wrapping: text::Wrapping::None,
-                        align_x: text::Alignment::Left,
-                        align_y: iced::alignment::Vertical::Top,
-                    },
+                super::internal::text::paragraph(
+                    renderer,
+                    label,
+                    shrinked_limits.max(),
+                    self.size.label_size,
+                    text::LineHeight::Relative(1.0),
+                    self.label_font.map(Renderer::Font::from),
+                    iced::alignment::Vertical::Top,
                 )
             })
         } else {
@@ -1069,43 +1048,26 @@ where
             .ripple
             .handle(event, bounds, cursor, !self.is_disabled(), shell);
         self.is_hovered = cursor.is_over(bounds);
-        match event {
-            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
-            | Event::Touch(touch::Event::FingerPressed { .. }) => {
-                if !self.is_disabled() && self.is_hovered {
-                    state.is_pressed = true;
-                    shell.capture_event();
+        match interaction::update_press(
+            event,
+            &mut state.is_pressed,
+            !self.is_disabled(),
+            self.is_hovered,
+        ) {
+            PressUpdate::Pressed => shell.capture_event(),
+            PressUpdate::Released => {
+                if let Some(on_press) = &self.on_press {
+                    shell.publish(on_press.resolve());
                 }
+                shell.capture_event();
             }
-            Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
-            | Event::Touch(touch::Event::FingerLifted { .. }) => {
-                if !self.is_disabled() && state.is_pressed {
-                    state.is_pressed = false;
-
-                    if self.is_hovered
-                        && let Some(on_press) = &self.on_press
-                    {
-                        shell.publish(on_press.resolve());
-                    }
-
-                    shell.capture_event();
-                }
-            }
-            Event::Touch(touch::Event::FingerLost { .. }) => {
-                state.is_pressed = false;
-            }
-            _ => {}
+            PressUpdate::ReleasedOutside => shell.capture_event(),
+            PressUpdate::Lost | PressUpdate::Ignored => {}
         }
 
-        let spring = self.get_style_spring();
-        if state.style_spring.spring.model != spring {
-            state.style_spring.spring.model = spring;
-        }
+        state.style_spring.set_model(self.get_style_spring());
         let corner_radius_spring = state.corner_radius_spring.as_mut().unwrap();
-        let spring = self.get_corner_radius_spring();
-        if corner_radius_spring.spring.model != spring {
-            corner_radius_spring.spring.model = spring;
-        }
+        corner_radius_spring.set_model(self.get_corner_radius_spring());
 
         let now = Instant::now();
 

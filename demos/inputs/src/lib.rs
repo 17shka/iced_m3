@@ -3,8 +3,10 @@ use iced::{
     alignment::Horizontal,
     widget::{column, row, text},
 };
-use iced_m3::theme::{Accent, ColorScheme, Theme};
-use iced_m3::widget::{button, text_input::TextInput};
+use iced_m3::{
+    theme::{Accent, ColorScheme, Theme},
+    widget::{button, text_input::TextInput},
+};
 
 #[derive(Clone)]
 pub enum Message {
@@ -76,11 +78,8 @@ impl Page {
     pub fn view<'a>(&self, theme: &'a Theme) -> Element<'a, Message> {
         column![
             section_header("Text Input", theme),
-            text(
-                "Right-click the input to open its context menu. Press Cmd/Ctrl+Z to undo \
-                 and Cmd/Ctrl+Shift+Z (or Ctrl+Y) to redo.",
-            )
-            .color(theme.on_surface_variant()),
+            text("Right-click the input to open its context menu",)
+                .color(theme.on_surface_variant()),
             TextInput::new("Type here...", &self.text_input_value, theme)
                 .on_input(Message::TextInputChanged)
                 .width(300.0),
@@ -150,3 +149,5 @@ fn section_header<'a>(title: &'a str, theme: &Theme) -> text::Text<'a> {
         .size(18.0)
         .color(theme.on_surface())
 }
+
+common::demo!(Page, Message, "Inputs Demo");

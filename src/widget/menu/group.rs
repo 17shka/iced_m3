@@ -1,11 +1,6 @@
 use iced::{
     Border, Element, Font, Length, Pixels, Point, Size, Vector,
-    advanced::{
-        Layout, Widget, layout, mouse, overlay,
-        renderer::Quad,
-        text::{self, Paragraph},
-        widget::Tree,
-    },
+    advanced::{Layout, Widget, layout, mouse, overlay, renderer::Quad, text, widget::Tree},
 };
 
 use crate::widget::menu::{self, Style};
@@ -58,20 +53,14 @@ where
         if let Some(label) = self.label.as_ref() {
             let max_width = max_width - menu::constants::GROUP_LABEL_LEFT_OFFSET.0;
             let limits = limits.max_width(max_width);
-            let paragraph = <Renderer as iced::advanced::text::Renderer>::Paragraph::with_text(
-                iced::advanced::text::Text {
-                    content: label,
-                    bounds: limits.max(),
-                    size: menu::constants::GROUP_LABEL_FONT_SIZE,
-                    line_height: text::LineHeight::Absolute(
-                        menu::constants::GROUP_LABEL_LINE_HEIGHT,
-                    ),
-                    font: self.label_font.unwrap_or_else(|| renderer.default_font()),
-                    shaping: text::Shaping::Advanced,
-                    wrapping: text::Wrapping::None,
-                    align_x: text::Alignment::Left,
-                    align_y: iced::alignment::Vertical::Top,
-                },
+            let paragraph = crate::widget::internal::text::paragraph(
+                renderer,
+                label,
+                limits.max(),
+                menu::constants::GROUP_LABEL_FONT_SIZE,
+                text::LineHeight::Absolute(menu::constants::GROUP_LABEL_LINE_HEIGHT),
+                self.label_font,
+                iced::alignment::Vertical::Top,
             );
 
             children.push(layout::Node::new(Size::new(

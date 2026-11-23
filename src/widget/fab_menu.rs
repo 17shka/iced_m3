@@ -29,6 +29,7 @@ use crate::{
         common_icons,
         fab::{self},
         hybrid_icon::Icon,
+        internal::interaction::{self, PressUpdate},
         ripple::Ripple,
     },
 };
@@ -360,46 +361,22 @@ where
             .ripple
             .handle(event, layout.bounds(), cursor, true, shell);
 
-        match event {
-            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
-            | Event::Touch(touch::Event::FingerPressed { .. }) => {
-                if is_hovered {
-                    state.is_pressed = true;
-                    shell.capture_event();
-                }
-            }
-            Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
-            | Event::Touch(touch::Event::FingerLifted { .. }) => {
-                if state.is_pressed {
-                    state.is_pressed = false;
-
-                    if is_hovered {
-                        state.is_expanded = !state.is_expanded;
-                    }
-                }
-            }
-            Event::Touch(touch::Event::FingerLost { .. }) => {
-                state.is_pressed = false;
-            }
-            _ => {}
+        match interaction::update_press(event, &mut state.is_pressed, true, is_hovered) {
+            PressUpdate::Pressed => shell.capture_event(),
+            PressUpdate::Released => state.is_expanded = !state.is_expanded,
+            PressUpdate::ReleasedOutside | PressUpdate::Lost | PressUpdate::Ignored => {}
         }
 
-        if let Some(spring) = self.spatial_spring {
-            if state.icon_rotation_spring.spring.model != spring {
-                state.icon_rotation_spring.spring.model = spring;
-            }
-            if state.corner_radius_spring.spring.model != spring {
-                state.corner_radius_spring.spring.model = spring;
-            }
-            if state.expansion_spring.spring.model != spring {
-                state.expansion_spring.spring.model = spring;
-            }
-        }
-        if let Some(spring) = self.effects_spring
-            && state.style_spring.spring.model != spring
-        {
-            state.style_spring.spring.model = spring;
-        }
+        state
+            .icon_rotation_spring
+            .set_model_if_some(self.spatial_spring);
+        state
+            .corner_radius_spring
+            .set_model_if_some(self.spatial_spring);
+        state
+            .expansion_spring
+            .set_model_if_some(self.spatial_spring);
+        state.style_spring.set_model_if_some(self.effects_spring);
 
         let now = Instant::now();
         let (style, corner_radius, icon_rotation) = match state.is_expanded {

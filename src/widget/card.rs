@@ -7,7 +7,11 @@ use iced::{
 use crate::{
     style::{DISABLED_STATE_LAYER_OPACITY, Elevation, StateLayer, shadow},
     theme::ColorScheme,
-    widget::{Action, ripple::Ripple},
+    widget::{
+        Action,
+        internal::interaction::{self, PressUpdate},
+        ripple::Ripple,
+    },
 };
 
 pub const MAX_CARD_BETWEEN_PADDING: f32 = 8.0;
@@ -352,50 +356,33 @@ where
         }
 
         let is_over = cursor.is_over(bounds);
-
-        match event {
-            iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) if is_over => {
-                shell.capture_event();
-                state.is_pressed = true;
-                shell.request_redraw();
-            }
+        let is_hovered = match event {
             iced::Event::Touch(touch::Event::FingerPressed { position, .. })
-                if bounds.contains(*position) =>
-            {
+            | iced::Event::Touch(touch::Event::FingerLifted { position, .. }) => {
+                bounds.contains(*position)
+            }
+            _ => is_over,
+        };
+
+        match interaction::update_press(event, &mut state.is_pressed, true, is_hovered) {
+            PressUpdate::Pressed => {
                 shell.capture_event();
-                state.is_pressed = true;
                 shell.request_redraw();
             }
-
-            iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
-                if state.is_pressed =>
-            {
-                shell.capture_event();
-                if is_over
-                    && let Interaction::Press(on_press) = &self.interaction
+            PressUpdate::Released => {
+                if let Interaction::Press(on_press) = &self.interaction
                     && let Some(on_press) = on_press
                 {
                     shell.publish(on_press.resolve());
                 }
-                state.is_pressed = false;
-                shell.request_redraw();
-            }
-            iced::Event::Touch(touch::Event::FingerLifted { position, .. }) if state.is_pressed => {
                 shell.capture_event();
-                if bounds.contains(*position)
-                    && let Interaction::Press(on_press) = &self.interaction
-                    && let Some(on_press) = on_press
-                {
-                    shell.publish(on_press.resolve());
-                }
-                state.is_pressed = false;
                 shell.request_redraw();
             }
-            iced::Event::Touch(touch::Event::FingerLost { .. }) => {
-                state.is_pressed = false;
+            PressUpdate::ReleasedOutside => {
+                shell.capture_event();
+                shell.request_redraw();
             }
-
-            _ => {}
+            PressUpdate::Lost | PressUpdate::Ignored => {}
         }
 
         if !is_over && !matches!(event, iced::Event::Touch(_)) {

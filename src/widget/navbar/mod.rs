@@ -190,7 +190,7 @@ where
         renderer: &Renderer,
         limits: &iced::advanced::layout::Limits,
     ) -> Node {
-        let mut item_widgets = self.get_items(item::Mode::Compact);
+        let mut item_widgets = std::mem::take(&mut self.item_widgets);
 
         let cell_width = container_bounds.width / self.items.len() as f32;
         let item_nodes = item_widgets
@@ -223,9 +223,7 @@ where
         renderer: &Renderer,
         limits: &iced::advanced::layout::Limits,
     ) -> Node {
-        let mut item_widgets = self.get_items(item::Mode::Large {
-            width: Some(Pixels(item_width)),
-        });
+        let mut item_widgets = std::mem::take(&mut self.item_widgets);
 
         let spacing = constants::ITEM_LARGE_SPACING;
         let total_width =
@@ -299,45 +297,55 @@ where
             Size::ZERO,
         );
 
-        let widest_needed = self.mode == Mode::Large || self.mode == Mode::Auto;
-        let widest = widest_needed
-            .then(|| {
-                self.get_items(item::Mode::Large { width: None })
-                    .iter_mut()
-                    .enumerate()
-                    .map(|(index, item)| {
-                        let node = (item as &mut dyn Widget<Message, Theme, Renderer>).layout(
-                            &mut tree.children[index],
-                            renderer,
-                            limits,
-                        );
+        if self.mode == Mode::Compact {
+            self.item_widgets = self.get_items(item::Mode::Compact);
 
-                        node.bounds()
-                    })
-                    .max_by(|a, b| a.size().width.total_cmp(&b.size().width))
-                    .map(|bounds| bounds.width)
-            })
-            .flatten();
-
-        match self.mode {
-            Mode::Compact => self.compact_layout(container_bounds, tree, renderer, limits),
-            Mode::Large => match widest {
-                Some(width) => self.large_layout(container_bounds, width, tree, renderer, limits),
-                None => Node::new(container_bounds),
-            },
-            Mode::Auto => match widest {
-                Some(width) => {
-                    let total_width = width * self.item_widgets.len() as f32
-                        + constants::ITEM_LARGE_SPACING * (self.item_widgets.len() - 1) as f32;
-                    if total_width > container_bounds.width {
-                        self.compact_layout(container_bounds, tree, renderer, limits)
-                    } else {
-                        self.large_layout(container_bounds, width, tree, renderer, limits)
-                    }
-                }
-                None => Node::new(container_bounds),
-            },
+            return self.compact_layout(container_bounds, tree, renderer, limits);
         }
+
+        // Measure the natural width of every item once, then reuse the same
+        // widgets for the final layout instead of rebuilding them.
+        self.item_widgets = self.get_items(item::Mode::Large { width: None });
+
+        if self.item_widgets.is_empty() {
+            return Node::new(container_bounds);
+        }
+
+        let mut widest = 0.0f32;
+        for (index, item) in self.item_widgets.iter_mut().enumerate() {
+            let node = (item as &mut dyn Widget<Message, Theme, Renderer>).layout(
+                &mut tree.children[index],
+                renderer,
+                limits,
+            );
+
+            widest = widest.max(node.bounds().width);
+        }
+
+        let item_count = self.item_widgets.len();
+        let large_total_width = widest * item_count as f32
+            + constants::ITEM_LARGE_SPACING * item_count.saturating_sub(1) as f32;
+
+        let use_large = match self.mode {
+            Mode::Large => true,
+            Mode::Auto => large_total_width <= container_bounds.width,
+            Mode::Compact => false,
+        };
+
+        if !use_large {
+            self.item_widgets = self.get_items(item::Mode::Compact);
+
+            return self.compact_layout(container_bounds, tree, renderer, limits);
+        }
+
+        let mode = item::Mode::Large {
+            width: Some(Pixels(widest)),
+        };
+        for item in &mut self.item_widgets {
+            item.set_mode(mode);
+        }
+
+        self.large_layout(container_bounds, widest, tree, renderer, limits)
     }
 
     fn draw(

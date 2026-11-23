@@ -419,6 +419,60 @@ struct State {
     expansion: SpringValue<f32>,
 }
 
+/// An empty element used to keep the child tree shape stable when an optional
+/// section (`menu`, `fab`, items container) is absent.
+fn placeholder<'a, Message, Theme, Renderer>() -> Element<'a, Message, Theme, Renderer>
+where
+    Message: 'a,
+    Theme: 'a,
+    Renderer: 'a + iced::advanced::Renderer,
+{
+    Element::new(
+        iced::widget::Space::new()
+            .width(Length::Shrink)
+            .height(Length::Shrink),
+    )
+}
+
+/// Builds throwaway item widgets used to measure widths and heights during
+/// layout. They are built once per layout pass and reused for both
+/// measurements.
+fn measure_items<'a, Message, Theme, Renderer>(
+    nav_rail: &NavRail<'a, Message, Theme, Renderer>,
+) -> Vec<Element<'a, Message, Theme, Renderer>>
+where
+    Message: 'a + Clone,
+    Theme: 'a,
+    Renderer: 'a
+        + iced::advanced::text::Renderer
+        + iced::advanced::svg::Renderer
+        + iced_widget::renderer::geometry::Renderer,
+    Renderer::Font: From<iced::Font>,
+{
+    nav_rail
+        .items
+        .iter()
+        .enumerate()
+        .map(|(index, content)| {
+            let active = index == nav_rail.active_index;
+
+            Element::from(
+                item::Item::new(
+                    nav_rail.style.item_style,
+                    content.clone(),
+                    nav_rail.mode.is_expanded(),
+                    nav_rail.label_font,
+                    active,
+                    nav_rail.hide_labels_when_collapsed,
+                )
+                .motion_scheme_maybe(nav_rail.motion_scheme)
+                .active_transition_spring_maybe(nav_rail.item_active_transition_spring)
+                .color_spring_maybe(nav_rail.item_color_spring),
+            )
+        })
+        .collect()
+}
+
 impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer>
     for NavRail<'a, Message, Theme, Renderer>
 where
@@ -455,12 +509,9 @@ where
         let now = Instant::now();
         let state = tree.state.downcast_mut::<State>();
 
-        if let Some(spring) = self.resolve_expand_spring()
-            && state.width.spring.model != spring
-        {
-            state.width.spring.model = spring;
-            state.expansion.spring.model = spring;
-        }
+        let spring = self.resolve_expand_spring();
+        state.width.set_model_if_some(spring);
+        state.expansion.set_model_if_some(spring);
         state
             .expansion
             .set_target(self.mode_is_expanded() as usize as f32, now);
@@ -478,73 +529,45 @@ where
         if tree.children.len() != target_len {
             tree.children = self.children();
         } else {
-            let menu_placeholder: Element<'a, Message, Theme, Renderer> = Element::new(
-                iced::widget::Space::new()
-                    .width(Length::Shrink)
-                    .height(Length::Shrink),
-            );
-            let fab_placeholder: Element<'a, Message, Theme, Renderer> = Element::new(
-                iced::widget::Space::new()
-                    .width(Length::Shrink)
-                    .height(Length::Shrink),
-            );
-            let items_placeholder: Element<'a, Message, Theme, Renderer> = Element::new(
-                iced::widget::Space::new()
-                    .width(Length::Shrink)
-                    .height(Length::Shrink),
-            );
+            let placeholder: Element<'a, Message, Theme, Renderer> = placeholder();
 
             if let Some(menu) = self.menu_button.as_ref() {
                 tree.children[0].diff(menu.as_widget());
             } else {
-                tree.children[0].diff(menu_placeholder.as_widget());
+                tree.children[0].diff(placeholder.as_widget());
             }
             if let Some(fab) = self.fab_element.as_ref() {
                 tree.children[1].diff(fab.as_widget());
             } else {
-                tree.children[1].diff(fab_placeholder.as_widget());
+                tree.children[1].diff(placeholder.as_widget());
             }
             if let Some(container) = self.items_container.as_ref() {
                 tree.children[2].diff(container.as_widget());
             } else {
-                tree.children[2].diff(items_placeholder.as_widget());
+                tree.children[2].diff(placeholder.as_widget());
             }
         }
     }
 
     fn children(&self) -> Vec<Tree> {
         let mut children = Vec::with_capacity(3);
+        let placeholder: Element<'a, Message, Theme, Renderer> = placeholder();
 
         if let Some(menu) = self.menu_button.as_ref() {
             children.push(Tree::new(menu.as_widget()));
         } else {
-            let menu_placeholder: Element<'a, Message, Theme, Renderer> = Element::new(
-                iced::widget::Space::new()
-                    .width(Length::Shrink)
-                    .height(Length::Shrink),
-            );
-            children.push(Tree::new(menu_placeholder.as_widget()));
+            children.push(Tree::new(placeholder.as_widget()));
         }
 
         if let Some(fab) = self.fab_element.as_ref() {
             children.push(Tree::new(fab.as_widget()));
         } else {
-            let fab_placeholder: Element<'a, Message, Theme, Renderer> = Element::new(
-                iced::widget::Space::new()
-                    .width(Length::Shrink)
-                    .height(Length::Shrink),
-            );
-            children.push(Tree::new(fab_placeholder.as_widget()));
+            children.push(Tree::new(placeholder.as_widget()));
         }
 
         if let Some(container) = self.items_container.as_ref() {
             children.push(Tree::new(container.as_widget()));
         } else {
-            let placeholder: Element<'a, Message, Theme, Renderer> = Element::new(
-                iced::widget::Space::new()
-                    .width(Length::Shrink)
-                    .height(Length::Shrink),
-            );
             children.push(Tree::new(placeholder.as_widget()));
         }
 
@@ -566,26 +589,21 @@ where
         let expansion = rail_state.expansion.value().clamp(0.0, 1.0);
         let fab_visibility = (self.fab_element.is_some() && self.fab_visible) as usize as f32;
 
+        // Build the measuring widgets once and reuse them for both the width
+        // and the content-height measurements below.
+        let mut measure_widgets = match self.mode {
+            Mode::ExpandedAuto => measure_items(self),
+            _ if self.items_container.is_some() => measure_items(self),
+            _ => Vec::new(),
+        };
+
         // Pre-layout pass to determine content width for ExpandedAuto
         let effective_target = match self.mode {
             Mode::ExpandedAuto => {
                 let temp_limits =
                     iced::advanced::layout::Limits::new(Size::ZERO, Size::new(f32::MAX, f32::MAX));
                 let mut max_item_width = 0.0f32;
-                for (index, content) in self.items.iter().enumerate() {
-                    let active = index == self.active_index;
-                    let mut item_element: Element<'a, Message, Theme, Renderer> = item::Item::new(
-                        self.style.item_style,
-                        content.clone(),
-                        self.mode.is_expanded(),
-                        self.label_font,
-                        active,
-                        self.hide_labels_when_collapsed,
-                    )
-                    .motion_scheme_maybe(self.motion_scheme)
-                    .active_transition_spring_maybe(self.item_active_transition_spring)
-                    .color_spring_maybe(self.item_color_spring)
-                    .into();
+                for item_element in &mut measure_widgets {
                     let mut temp_tree = Tree::new(item_element.as_widget());
                     temp_tree.state.downcast_mut::<ItemState>().expansion = expansion;
                     let item_layout =
@@ -610,11 +628,7 @@ where
         let mut tree_index = 0;
 
         // Menu
-        let mut menu_placeholder: Element<'a, Message, Theme, Renderer> = Element::new(
-            iced::widget::Space::new()
-                .width(Length::Shrink)
-                .height(Length::Shrink),
-        );
+        let mut menu_placeholder: Element<'a, Message, Theme, Renderer> = placeholder();
         let menu_layout = if let Some(menu) = self.menu_button.as_mut() {
             menu.as_widget_mut()
                 .layout(&mut tree.children[tree_index], renderer, limits)
@@ -644,11 +658,7 @@ where
         offset = offset.round();
 
         // Fab
-        let mut fab_placeholder: Element<'a, Message, Theme, Renderer> = Element::new(
-            iced::widget::Space::new()
-                .width(Length::Shrink)
-                .height(Length::Shrink),
-        );
+        let mut fab_placeholder: Element<'a, Message, Theme, Renderer> = placeholder();
         let fab_layout = if let Some(fab) = self.fab_element.as_mut() {
             fab.as_widget_mut()
                 .layout(&mut tree.children[tree_index], renderer, limits)
@@ -688,20 +698,7 @@ where
 
             // Measure total content height for item alignment
             let mut content_height = 0.0;
-            for (index, content) in self.items.iter().enumerate() {
-                let active = index == self.active_index;
-                let mut item_element: Element<'a, Message, Theme, Renderer> = item::Item::new(
-                    self.style.item_style,
-                    content.clone(),
-                    self.mode.is_expanded(),
-                    self.label_font,
-                    active,
-                    self.hide_labels_when_collapsed,
-                )
-                .motion_scheme_maybe(self.motion_scheme)
-                .active_transition_spring_maybe(self.item_active_transition_spring)
-                .color_spring_maybe(self.item_color_spring)
-                .into();
+            for item_element in &mut measure_widgets {
                 let mut temp_tree = Tree::new(item_element.as_widget());
                 temp_tree.state.downcast_mut::<ItemState>().expansion = expansion;
                 let item_layout =
@@ -967,12 +964,9 @@ where
             _ => Instant::now(),
         };
 
-        if let Some(spring) = self.resolve_expand_spring()
-            && state.width.spring.model != spring
-        {
-            state.width.spring.model = spring;
-            state.expansion.spring.model = spring;
-        }
+        let spring = self.resolve_expand_spring();
+        state.width.set_model_if_some(spring);
+        state.expansion.set_model_if_some(spring);
 
         state.width.step(now);
         state.expansion.step(now);

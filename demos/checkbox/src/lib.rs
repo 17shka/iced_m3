@@ -165,3 +165,5 @@ impl Demo {
 }
 
 pub type Page = Demo;
+
+common::demo!(Page, Message, "Checkbox Demo");

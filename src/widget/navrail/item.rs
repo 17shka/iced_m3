@@ -28,45 +28,31 @@ pub const ICON_SIZE: f32 = 24.0;
 use iced::time::Instant;
 
 use iced::{
-    Border, Element, Event, Font, Length, Pixels, Point, Rectangle, Size,
+    Element, Font, Length, Pixels, Point, Size,
     advanced::{
         Widget,
         layout::Node,
-        mouse,
-        renderer::Quad,
         text::{self, Paragraph},
         widget::Tree,
     },
     border::Radius,
-    touch,
 };
-use iced_widget::{core::Svg, space};
 
 use crate::{
-    animation::motion::{self, Spring, SpringValue, default_effects, fast_effects},
-    widget::{self, hybrid_icon::Icon, ripple::Ripple},
+    animation::motion::{self, Spring, default_effects, fast_effects},
+    widget::internal::navigation_common::{
+        build_badge, colors_for, draw_icon, draw_indicator, draw_label, handle_press,
+        icon_paragraph, paragraph, update_springs,
+    },
 };
 
 pub use crate::widget::internal::navigation_common::NavigationItemContent as Content;
 pub use crate::widget::internal::navigation_common::NavigationItemStyle as Style;
-pub use crate::widget::internal::navigation_common::{Colors, State as CommonState};
+pub use crate::widget::internal::navigation_common::State as CommonState;
 
 pub(crate) struct State {
     pub common: CommonState,
     pub expansion: f32,
-}
-
-fn colors_for(active: bool, style: &Style) -> Colors {
-    match active {
-        true => Colors {
-            icon: style.content_active,
-            label: style.label_content_active,
-        },
-        false => Colors {
-            icon: style.content_inactive,
-            label: style.content_inactive,
-        },
-    }
 }
 
 fn lerp(a: f32, b: f32, t: f32) -> f32 {
@@ -116,14 +102,8 @@ where
         active: bool,
         hide_labels_when_collapsed: bool,
     ) -> Self {
-        let badge = content.badge.as_ref().map(|badge| {
-            widget::badge(
-                style.badge_style,
-                space().width(ICON_SIZE).height(ICON_SIZE),
-            )
-            .label_maybe(badge.label.clone())
-            .into()
-        });
+        let badge =
+            build_badge::<Message, Theme, Renderer>(&style, content.badge.as_ref(), ICON_SIZE);
 
         Self {
             expanded,
@@ -190,28 +170,14 @@ where
     }
 
     fn state(&self) -> iced::advanced::widget::tree::State {
-        let now = Instant::now();
-
         let colors = colors_for(self.active, &self.style);
-        let active = self.active as usize as f32;
-        let mut common = CommonState {
-            is_pressed: false,
-            ripple: Ripple::new(),
-            active_transition_spring: SpringValue::new(
-                active,
-                self.active_transition_spring
-                    .unwrap_or(default_effects(motion::Scheme::default())),
-                now,
-            ),
-            color_spring: SpringValue::new(
-                colors,
-                self.color_spring
-                    .unwrap_or(fast_effects(motion::Scheme::default())),
-                now,
-            ),
-        };
-        common.active_transition_spring.reset(active, now);
-        common.color_spring.reset(colors, now);
+        let common = CommonState::new(
+            self.active,
+            colors,
+            self.active_transition_spring,
+            self.color_spring,
+            Instant::now(),
+        );
         let state = State {
             common,
             expansion: self.expanded as usize as f32,
@@ -248,57 +214,28 @@ where
             true => &self.content.icon_active,
             false => &self.content.icon_inactive,
         };
-        if let Icon::Text { text, font } = icon {
-            let icon_paragraph = <Renderer as text::Renderer>::Paragraph::with_text(text::Text {
-                content: text,
-                bounds: Size::INFINITE,
-                size: Pixels(ICON_SIZE),
-                line_height: text::LineHeight::Absolute(Pixels(ICON_SIZE)),
-                font: font
-                    .map(Renderer::Font::from)
-                    .unwrap_or_else(|| renderer.default_font()),
-                shaping: text::Shaping::Advanced,
-                wrapping: text::Wrapping::None,
-                align_x: text::Alignment::Left,
-                align_y: iced::alignment::Vertical::Center,
-            });
-            self.icon_paragraph = Some(icon_paragraph);
-        }
+        self.icon_paragraph = icon_paragraph(renderer, icon, ICON_SIZE);
 
         if self.small_label_paragraph.is_none() {
-            self.small_label_paragraph = Some(<Renderer as text::Renderer>::Paragraph::with_text(
-                text::Text {
-                    content: &self.content.label,
-                    bounds: Size::INFINITE,
-                    size: Pixels(ITEM_SMALL_LABEL_SIZE),
-                    line_height: text::LineHeight::Absolute(Pixels(ITEM_SMALL_LABEL_LINE_HEIGHT)),
-                    font: self
-                        .label_font
-                        .map(Renderer::Font::from)
-                        .unwrap_or_else(|| renderer.default_font()),
-                    shaping: text::Shaping::Advanced,
-                    wrapping: text::Wrapping::None,
-                    align_x: text::Alignment::Left,
-                    align_y: iced::alignment::Vertical::Center,
-                },
+            self.small_label_paragraph = Some(paragraph(
+                renderer,
+                &self.content.label,
+                Size::INFINITE,
+                Pixels(ITEM_SMALL_LABEL_SIZE),
+                text::LineHeight::Absolute(Pixels(ITEM_SMALL_LABEL_LINE_HEIGHT)),
+                self.label_font,
+                iced::alignment::Vertical::Center,
             ));
         }
         if self.large_label_paragraph.is_none() {
-            self.large_label_paragraph = Some(<Renderer as text::Renderer>::Paragraph::with_text(
-                text::Text {
-                    content: &self.content.label,
-                    bounds: Size::INFINITE,
-                    size: Pixels(ITEM_LARGE_LABEL_SIZE),
-                    line_height: text::LineHeight::Absolute(Pixels(ITEM_LARGE_LABEL_LINE_HEIGHT)),
-                    font: self
-                        .label_font
-                        .map(Renderer::Font::from)
-                        .unwrap_or_else(|| renderer.default_font()),
-                    shaping: text::Shaping::Advanced,
-                    wrapping: text::Wrapping::None,
-                    align_x: text::Alignment::Left,
-                    align_y: iced::alignment::Vertical::Center,
-                },
+            self.large_label_paragraph = Some(paragraph(
+                renderer,
+                &self.content.label,
+                Size::INFINITE,
+                Pixels(ITEM_LARGE_LABEL_SIZE),
+                text::LineHeight::Absolute(Pixels(ITEM_LARGE_LABEL_LINE_HEIGHT)),
+                self.label_font,
+                iced::alignment::Vertical::Center,
             ));
         }
 
@@ -476,43 +413,25 @@ where
         let badge_layout = self.badge.as_ref().map(|_| layout.child(4));
 
         // Active indicator pill.
-        let width = state.common.active_transition_spring.value() * indicator_bounds.width;
-        if width > 0.0 {
-            let bounds = Rectangle {
-                x: indicator_bounds.x + (indicator_bounds.width - width) / 2.0,
-                y: indicator_bounds.y,
-                width,
-                height: indicator_bounds.height,
-            };
-            renderer.fill_quad(
-                Quad {
-                    bounds,
-                    border: Border::default().rounded(f32::MAX),
-                    ..Default::default()
-                },
-                self.style
-                    .container_color
-                    .scale_alpha(state.common.active_transition_spring.value()),
-            );
-        }
+        draw_indicator(
+            renderer,
+            indicator_bounds,
+            state.common.active_transition_spring.value(),
+            self.style.container_color,
+        );
 
         let colors = state.common.color_spring.value();
 
-        if let Some(icon) = &self.icon_paragraph {
-            renderer.fill_paragraph(icon, icon_bounds.position(), colors.icon, icon_bounds);
-        } else {
-            let icon = match self.active {
+        draw_icon(
+            renderer,
+            self.icon_paragraph.as_ref(),
+            match self.active {
                 true => &self.content.icon_active,
                 false => &self.content.icon_inactive,
-            };
-            if let Icon::Svg(handle) = icon.clone() {
-                renderer.draw_svg(
-                    Svg::new(handle).color(colors.icon),
-                    icon_bounds,
-                    icon_bounds,
-                );
-            }
-        }
+            },
+            icon_bounds,
+            colors.icon,
+        );
 
         let large_label_alpha = if self.hide_labels_when_collapsed {
             // When labels are hidden in collapsed state, smoothly fade the
@@ -540,22 +459,22 @@ where
         if small_label_alpha > 0.0
             && let Some(label) = &self.small_label_paragraph
         {
-            renderer.fill_paragraph(
+            draw_label(
+                renderer,
                 label,
-                small_label_bounds.position(),
-                colors.label.scale_alpha(small_label_alpha),
                 small_label_bounds,
+                colors.label.scale_alpha(small_label_alpha),
             );
         }
 
         if large_label_alpha > 0.0
             && let Some(label) = &self.large_label_paragraph
         {
-            renderer.fill_paragraph(
+            draw_label(
+                renderer,
                 label,
-                large_label_bounds.position(),
-                colors.label.scale_alpha(large_label_alpha),
                 large_label_bounds,
+                colors.label.scale_alpha(large_label_alpha),
             );
         }
 
@@ -592,65 +511,28 @@ where
         _viewport: &iced::Rectangle,
     ) {
         let state = tree.state.downcast_mut::<State>();
-        let common = &mut state.common;
 
         let bounds = layout.bounds();
         let indicator_bounds = layout.child(0).bounds();
-        let is_hovered = cursor.is_over(bounds);
-        common
-            .ripple
-            .handle(event, indicator_bounds, cursor, true, shell);
 
-        match event {
-            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
-            | Event::Touch(touch::Event::FingerPressed { .. }) => {
-                if is_hovered {
-                    common.is_pressed = true;
-                    shell.request_redraw();
-                }
-            }
-            Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
-            | Event::Touch(touch::Event::FingerLifted { .. }) => {
-                if is_hovered && common.is_pressed {
-                    shell.publish(self.content.on_press.clone());
-                }
-                common.is_pressed = false;
-                shell.request_redraw();
-            }
-            Event::Touch(touch::Event::FingerLost { .. }) => {
-                common.is_pressed = false;
-                shell.request_redraw();
-            }
-            _ => {}
-        }
-
-        if let Some(spring) = self.active_transition_spring
-            && common.active_transition_spring.spring.model != spring
-        {
-            common.active_transition_spring.spring.model = spring;
-        }
-        if let Some(spring) = self.color_spring
-            && common.color_spring.spring.model != spring
-        {
-            common.color_spring.spring.model = spring;
-        }
-
-        let now = match event {
-            Event::Window(iced::window::Event::RedrawRequested(at)) => *at,
-            _ => Instant::now(),
-        };
-        common
-            .color_spring
-            .set_target(colors_for(self.active, &self.style), now);
-        common
-            .active_transition_spring
-            .set_target(self.active as usize as f32, now);
-
-        if !common.active_transition_spring.is_at_rest() || !common.color_spring.is_at_rest() {
-            shell.request_redraw();
-        }
-        common.active_transition_spring.step(now);
-        common.color_spring.step(now);
+        handle_press(
+            event,
+            &mut state.common,
+            indicator_bounds,
+            bounds,
+            cursor,
+            &self.content.on_press,
+            shell,
+        );
+        update_springs(
+            event,
+            &mut state.common,
+            self.active,
+            &self.style,
+            self.active_transition_spring,
+            self.color_spring,
+            shell,
+        );
     }
 
     fn mouse_interaction(

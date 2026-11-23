@@ -196,3 +196,5 @@ impl Demo {
 }
 
 pub type Page = Demo;
+
+common::demo!(Page, Message, "Switch Demo");

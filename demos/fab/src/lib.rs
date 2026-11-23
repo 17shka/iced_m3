@@ -197,3 +197,5 @@ fn section_header<'a>(title: &'a str, theme: &Theme) -> text::Text<'a> {
         .size(18.0)
         .color(theme.on_surface())
 }
+
+common::demo!(Page, Message, "Fab Demo");

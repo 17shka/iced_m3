@@ -5,10 +5,9 @@ use iced::{
         layout::{Limits, Node},
         mouse, overlay,
         renderer::Quad,
-        text::{self, Paragraph},
+        text,
         widget::Tree,
     },
-    touch,
 };
 
 const ICON_OFFSET: f32 = (menu::constants::ITEM_HEIGHT.0 - menu::constants::ITEM_ICON_SIZE.0) / 2.0;
@@ -20,6 +19,7 @@ use crate::{
         Action,
         common_icons::ARROW_RIGHT,
         hybrid_icon::Icon,
+        internal::interaction::{self, PressUpdate},
         menu::{self, Menu},
         ripple::Ripple,
     },
@@ -200,18 +200,14 @@ where
             );
 
             if let Icon::Text { text, font } = icon {
-                let paragraph = <Renderer as iced::advanced::text::Renderer>::Paragraph::with_text(
-                    iced::advanced::text::Text {
-                        content: text,
-                        bounds,
-                        size: menu::constants::ITEM_ICON_SIZE,
-                        line_height: text::LineHeight::Absolute(menu::constants::ITEM_ICON_SIZE),
-                        font: font.unwrap_or_else(|| renderer.default_font()),
-                        shaping: text::Shaping::Advanced,
-                        wrapping: text::Wrapping::None,
-                        align_x: text::Alignment::Left,
-                        align_y: iced::alignment::Vertical::Top,
-                    },
+                let paragraph = crate::widget::internal::text::paragraph(
+                    renderer,
+                    text,
+                    bounds,
+                    menu::constants::ITEM_ICON_SIZE,
+                    text::LineHeight::Absolute(menu::constants::ITEM_ICON_SIZE),
+                    *font,
+                    iced::alignment::Vertical::Top,
                 );
 
                 self.leading_icon_paragraph = Some(paragraph);
@@ -256,20 +252,14 @@ where
                 menu::constants::ITEM_SUPPORTING_TEXT_LINE_HEIGHT.0,
             );
 
-            let paragraph = <Renderer as iced::advanced::text::Renderer>::Paragraph::with_text(
-                iced::advanced::text::Text {
-                    content: text,
-                    bounds,
-                    size: menu::constants::ITEM_SUPPORTING_TEXT_SIZE,
-                    line_height: text::LineHeight::Absolute(
-                        menu::constants::ITEM_SUPPORTING_TEXT_LINE_HEIGHT,
-                    ),
-                    font: self.label_font.unwrap_or_else(|| renderer.default_font()),
-                    shaping: text::Shaping::Advanced,
-                    wrapping: text::Wrapping::None,
-                    align_x: text::Alignment::Left,
-                    align_y: iced::alignment::Vertical::Top,
-                },
+            let paragraph = crate::widget::internal::text::paragraph(
+                renderer,
+                text,
+                bounds,
+                menu::constants::ITEM_SUPPORTING_TEXT_SIZE,
+                text::LineHeight::Absolute(menu::constants::ITEM_SUPPORTING_TEXT_LINE_HEIGHT),
+                self.label_font,
+                iced::alignment::Vertical::Top,
             );
 
             self.supporting_text_paragraph = Some(paragraph);
@@ -331,18 +321,14 @@ where
             (label_node, supporting_text_node)
         };
 
-        let label_paragraph = <Renderer as iced::advanced::text::Renderer>::Paragraph::with_text(
-            iced::advanced::text::Text {
-                content: &self.data.label,
-                bounds: label_bounds,
-                size: menu::constants::ITEM_LABEL_FONT_SIZE,
-                line_height: text::LineHeight::Absolute(menu::constants::ITEM_LABEL_LINE_HEIGHT),
-                font: self.label_font.unwrap_or_else(|| renderer.default_font()),
-                shaping: text::Shaping::Advanced,
-                wrapping: text::Wrapping::None,
-                align_x: text::Alignment::Left,
-                align_y: iced::alignment::Vertical::Top,
-            },
+        let label_paragraph = crate::widget::internal::text::paragraph(
+            renderer,
+            &self.data.label,
+            label_bounds,
+            menu::constants::ITEM_LABEL_FONT_SIZE,
+            text::LineHeight::Absolute(menu::constants::ITEM_LABEL_LINE_HEIGHT),
+            self.label_font,
+            iced::alignment::Vertical::Top,
         );
 
         self.label_paragraph = Some(label_paragraph);
@@ -472,47 +458,34 @@ where
             self.is_hovered = is_hovered;
             shell.request_redraw();
         }
-        match event {
-            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
-            | Event::Touch(touch::Event::FingerPressed { .. }) => {
-                if self.is_enabled() && self.is_hovered {
-                    state.is_pressed = true;
-                    shell.capture_event();
-                }
+        match interaction::update_press(
+            event,
+            &mut state.is_pressed,
+            self.is_enabled(),
+            self.is_hovered,
+        ) {
+            PressUpdate::Pressed => {
+                shell.capture_event();
                 shell.request_redraw();
             }
-            Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
-            | Event::Touch(touch::Event::FingerLifted { .. }) => {
-                if self.is_enabled() && state.is_pressed {
-                    state.is_pressed = false;
-
-                    if self.is_hovered {
-                        match &self.data.action {
-                            MenuAction::SubMenu {
-                                is_opened: _,
-                                surface: _,
-                                on_press,
-                            } => shell.publish(on_press.resolve()),
-                            MenuAction::Message {
-                                is_selected: _,
-                                on_press,
-                            } => {
-                                if let Some(on_press) = on_press {
-                                    shell.publish(on_press.resolve());
-                                }
-                            }
+            PressUpdate::Released => {
+                match &self.data.action {
+                    MenuAction::SubMenu { on_press, .. } => shell.publish(on_press.resolve()),
+                    MenuAction::Message { on_press, .. } => {
+                        if let Some(on_press) = on_press {
+                            shell.publish(on_press.resolve());
                         }
                     }
-
-                    shell.capture_event();
                 }
+                shell.capture_event();
                 shell.request_redraw();
             }
-            Event::Touch(touch::Event::FingerLost { .. }) => {
-                state.is_pressed = false;
+            PressUpdate::ReleasedOutside => {
+                shell.capture_event();
                 shell.request_redraw();
             }
-            _ => {}
+            PressUpdate::Lost => shell.request_redraw(),
+            PressUpdate::Ignored => {}
         }
     }
 

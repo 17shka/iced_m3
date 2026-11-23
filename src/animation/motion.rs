@@ -40,46 +40,67 @@ pub enum Scheme {
     Standard,
 }
 
-pub fn fast_spatial(scheme: Scheme) -> Spring {
-    match scheme {
-        Scheme::Expressive => constants::FAST_SPATIAL_EXPRESSIVE,
-        Scheme::Standard => constants::FAST_SPATIAL_STANDARD,
+impl Scheme {
+    const fn ordinal(self) -> usize {
+        match self {
+            Scheme::Expressive => 0,
+            Scheme::Standard => 1,
+        }
     }
+}
+
+const SPATIAL: [[Spring; 2]; 3] = [
+    [
+        constants::FAST_SPATIAL_EXPRESSIVE,
+        constants::FAST_SPATIAL_STANDARD,
+    ],
+    [
+        constants::DEFAULT_SPATIAL_EXPRESSIVE,
+        constants::DEFAULT_SPATIAL_STANDARD,
+    ],
+    [
+        constants::SLOW_SPATIAL_EXPRESSIVE,
+        constants::SLOW_SPATIAL_STANDARD,
+    ],
+];
+
+const EFFECTS: [[Spring; 2]; 3] = [
+    [
+        constants::FAST_EFFECTS_EXPRESSIVE,
+        constants::FAST_EFFECTS_STANDARD,
+    ],
+    [
+        constants::DEFAULT_EFFECTS_EXPRESSIVE,
+        constants::DEFAULT_EFFECTS_STANDARD,
+    ],
+    [
+        constants::SLOW_EFFECTS_EXPRESSIVE,
+        constants::SLOW_EFFECTS_STANDARD,
+    ],
+];
+
+pub fn fast_spatial(scheme: Scheme) -> Spring {
+    SPATIAL[Speed::Fast.ordinal()][scheme.ordinal()]
 }
 
 pub fn fast_effects(scheme: Scheme) -> Spring {
-    match scheme {
-        Scheme::Expressive => constants::FAST_EFFECTS_EXPRESSIVE,
-        Scheme::Standard => constants::FAST_EFFECTS_STANDARD,
-    }
+    EFFECTS[Speed::Fast.ordinal()][scheme.ordinal()]
 }
 
 pub fn default_spatial(scheme: Scheme) -> Spring {
-    match scheme {
-        Scheme::Expressive => constants::DEFAULT_SPATIAL_EXPRESSIVE,
-        Scheme::Standard => constants::DEFAULT_SPATIAL_STANDARD,
-    }
+    SPATIAL[Speed::Default.ordinal()][scheme.ordinal()]
 }
 
 pub fn default_effects(scheme: Scheme) -> Spring {
-    match scheme {
-        Scheme::Expressive => constants::DEFAULT_EFFECTS_EXPRESSIVE,
-        Scheme::Standard => constants::DEFAULT_EFFECTS_STANDARD,
-    }
+    EFFECTS[Speed::Default.ordinal()][scheme.ordinal()]
 }
 
 pub fn slow_spatial(scheme: Scheme) -> Spring {
-    match scheme {
-        Scheme::Expressive => constants::SLOW_SPATIAL_EXPRESSIVE,
-        Scheme::Standard => constants::SLOW_SPATIAL_STANDARD,
-    }
+    SPATIAL[Speed::Slow.ordinal()][scheme.ordinal()]
 }
 
 pub fn slow_effects(scheme: Scheme) -> Spring {
-    match scheme {
-        Scheme::Expressive => constants::SLOW_EFFECTS_EXPRESSIVE,
-        Scheme::Standard => constants::SLOW_EFFECTS_STANDARD,
-    }
+    EFFECTS[Speed::Slow.ordinal()][scheme.ordinal()]
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -91,22 +112,22 @@ pub enum Speed {
 }
 
 impl Speed {
-    #[must_use]
-    pub fn spatial(self, scheme: Scheme) -> Spring {
+    const fn ordinal(self) -> usize {
         match self {
-            Speed::Fast => fast_spatial(scheme),
-            Speed::Default => default_spatial(scheme),
-            Speed::Slow => slow_spatial(scheme),
+            Speed::Fast => 0,
+            Speed::Default => 1,
+            Speed::Slow => 2,
         }
     }
 
     #[must_use]
+    pub fn spatial(self, scheme: Scheme) -> Spring {
+        SPATIAL[self.ordinal()][scheme.ordinal()]
+    }
+
+    #[must_use]
     pub fn effects(self, scheme: Scheme) -> Spring {
-        match self {
-            Speed::Fast => fast_effects(scheme),
-            Speed::Default => default_effects(scheme),
-            Speed::Slow => slow_effects(scheme),
-        }
+        EFFECTS[self.ordinal()][scheme.ordinal()]
     }
 }
 
@@ -283,6 +304,18 @@ where
 
     pub fn step(&mut self, now: Instant) {
         self.spring.step(now);
+    }
+
+    pub fn set_model(&mut self, spring: Spring) {
+        if self.spring.model != spring {
+            self.spring.model = spring;
+        }
+    }
+
+    pub fn set_model_if_some(&mut self, spring: Option<Spring>) {
+        if let Some(spring) = spring {
+            self.set_model(spring);
+        }
     }
 
     pub fn set_target(&mut self, target: T, now: Instant) {

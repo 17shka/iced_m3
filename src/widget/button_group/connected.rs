@@ -252,64 +252,72 @@ where
     Renderer::Font: From<iced::Font>,
 {
     fn from(value: ButtonGroup<'a, Message>) -> Self {
-        let buttons = value
-            .model
-            .clone()
-            .into_iter()
-            .enumerate()
-            .map(|(index, model)| {
-                let left_radius = if index == 0 {
-                    value.size.outer_corner_size.0
-                } else {
-                    value.size.inner_corner_size.0
-                };
-                let right_radius = if index == value.model.len() - 1 {
-                    value.size.outer_corner_size.0
-                } else {
-                    value.size.inner_corner_size.0
-                };
-                let corner_radius = CornerRadius {
-                    style: CornerStyle::Rounded,
-                    shape_morph: true,
-                    rounded: Radius {
-                        top_left: left_radius,
-                        top_right: right_radius,
-                        bottom_right: right_radius,
-                        bottom_left: left_radius,
-                    },
-                    square: value.size.outer_corner_size.0.into(),
-                    pressed: value.size.pressed_corner_size.0.into(),
-                };
+        let ButtonGroup {
+            model,
+            style,
+            size,
+            label_font,
+            motion_scheme,
+            style_spring,
+            corner_radius_spring,
+            button_expansion_spring,
+            expansion_ratio,
+        } = value;
 
-                let size = button::Size {
-                    width: Length::Shrink,
-                    height: value.size.container_height.into(),
-                    spacing: value.size.content_spacing,
-                    padding: value.size.content_padding,
-                    icon_size: value.size.icon_size,
-                    label_size: value.size.label_size,
-                    corner_radius,
-                };
+        let last_index = model.len().saturating_sub(1);
+        let buttons = model.into_iter().enumerate().map(|(index, model)| {
+            let left_radius = if index == 0 {
+                size.outer_corner_size.0
+            } else {
+                size.inner_corner_size.0
+            };
+            let right_radius = if index == last_index {
+                size.outer_corner_size.0
+            } else {
+                size.inner_corner_size.0
+            };
+            let corner_radius = CornerRadius {
+                style: CornerStyle::Rounded,
+                shape_morph: true,
+                rounded: Radius {
+                    top_left: left_radius,
+                    top_right: right_radius,
+                    bottom_right: right_radius,
+                    bottom_left: left_radius,
+                },
+                square: size.outer_corner_size.0.into(),
+                pressed: size.pressed_corner_size.0.into(),
+            };
 
-                crate::widget::button(value.style, model.content)
-                    .selected(model.selected)
-                    .label_font_maybe(value.label_font)
-                    .on_press_maybe(model.on_press)
-                    .motion_scheme_maybe(value.motion_scheme)
-                    .style_spring_maybe(value.style_spring)
-                    .corner_radius_spring_maybe(value.corner_radius_spring)
-                    .size(size)
-            });
+            let size = button::Size {
+                width: Length::Shrink,
+                height: size.container_height.into(),
+                spacing: size.content_spacing,
+                padding: size.content_padding,
+                icon_size: size.icon_size,
+                label_size: size.label_size,
+                corner_radius,
+            };
+
+            crate::widget::button(style, model.content)
+                .selected(model.selected)
+                .label_font_maybe(label_font)
+                .on_press_maybe(model.on_press)
+                .motion_scheme_maybe(motion_scheme)
+                .style_spring_maybe(style_spring)
+                .corner_radius_spring_maybe(corner_radius_spring)
+                .size(size)
+        });
 
         let items = buttons.into_iter().map(|b| {
             let is_disabled = b.is_disabled();
             GroupItem::new(b, is_disabled)
         });
         let button_group = standard::ButtonGroup::new(items)
-            .motion_scheme_maybe(value.motion_scheme)
-            .expansion_spring_maybe(value.button_expansion_spring)
-            .expansion_ratio(value.expansion_ratio)
-            .spacing(value.size.button_spacing);
+            .motion_scheme_maybe(motion_scheme)
+            .expansion_spring_maybe(button_expansion_spring)
+            .expansion_ratio(expansion_ratio)
+            .spacing(size.button_spacing);
 
         Element::new(button_group)
     }

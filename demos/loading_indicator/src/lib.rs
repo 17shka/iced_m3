@@ -63,3 +63,5 @@ impl Page {
         .into()
     }
 }
+
+common::demo!(Page, Message, "Loading Indicator Demo");

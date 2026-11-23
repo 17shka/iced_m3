@@ -547,9 +547,7 @@ where
     ) {
         let now = Instant::now();
 
-        if self.progress.spring.model != self.spring {
-            self.progress.spring.model = self.spring;
-        }
+        self.progress.set_model(self.spring);
         self.progress.set_target(f32::from(self.open), now);
 
         if !self.progress.is_at_rest() {
