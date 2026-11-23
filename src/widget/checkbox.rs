@@ -3,12 +3,11 @@ use iced::time::Instant;
 use iced::{
     Border, Color, Element, Length, Point, Rectangle, Size, Vector,
     advanced::{
-        Overlay, Widget,
+        Widget,
         layout::{self, Node},
         mouse, overlay,
         renderer::Quad,
     },
-    border::Radius,
     widget::canvas,
 };
 
@@ -19,7 +18,7 @@ use crate::{
     },
     style::StateLayer,
     theme::ColorScheme,
-    widget::ripple::Ripple,
+    widget::ripple::{Ripple, StateLayerOverlay},
 };
 
 const CHECKBOX_SIZE: f32 = 18.0;
@@ -578,7 +577,7 @@ where
         tree: &'b mut iced::advanced::widget::Tree,
         layout: iced::advanced::Layout<'b>,
         _renderer: &Renderer,
-        _viewport: &iced::Rectangle,
+        viewport: &iced::Rectangle,
         translation: iced::Vector,
     ) -> Option<iced::advanced::overlay::Element<'b, Message, Theme, Renderer>> {
         let state = tree.state.downcast_ref::<State>();
@@ -590,50 +589,20 @@ where
             width: STATE_LAYER_SIZE,
             height: STATE_LAYER_SIZE,
         };
-        (enabled && state.ripple.is_visible(layer_bounds.size(), enabled)).then(|| {
-            let overlay = CheckboxOverlay {
-                ripple: state.ripple,
-                layer: *self.style.state_layer(self.value.is_selected()),
-                bounds: layer_bounds,
-            };
-            overlay::Element::new(Box::new(overlay))
-        })
-    }
-}
 
-struct CheckboxOverlay {
-    ripple: Ripple,
-    layer: StateLayer,
-    bounds: Rectangle,
-}
+        if !(enabled && state.ripple.is_visible(layer_bounds.size(), enabled)) {
+            return None;
+        }
 
-impl<Message, Theme, Renderer> Overlay<Message, Theme, Renderer> for CheckboxOverlay
-where
-    Renderer: iced_widget::renderer::geometry::Renderer,
-{
-    fn layout(&mut self, _renderer: &Renderer, _bounds: Size) -> iced::advanced::layout::Node {
-        Node::new(Size {
-            width: self.bounds.width,
-            height: self.bounds.height,
-        })
-        .move_to(Point::new(self.bounds.x, self.bounds.y))
-    }
+        let overlay = StateLayerOverlay {
+            ripple: state.ripple,
+            layer: *self.style.state_layer(self.value.is_selected()),
+            bounds: layer_bounds,
+            clip: Rectangle::default(),
+        }
+        .clipped(viewport)?;
 
-    fn draw(
-        &self,
-        renderer: &mut Renderer,
-        _theme: &Theme,
-        _style: &iced::advanced::renderer::Style,
-        layout: iced::advanced::Layout<'_>,
-        _cursor: mouse::Cursor,
-    ) {
-        self.ripple.draw(
-            renderer,
-            layout.bounds(),
-            Radius::from(f32::MAX),
-            self.layer,
-            true,
-        );
+        Some(overlay::Element::new(Box::new(overlay)))
     }
 }
 

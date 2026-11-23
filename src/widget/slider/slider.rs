@@ -1,7 +1,7 @@
 use std::{fmt::Display, mem, ops::RangeInclusive};
 
 use iced::{
-    Border, Color, Element, Event, Length, Point, Rectangle,
+    Border, Element, Event, Length, Point, Rectangle,
     advanced::{
         Widget, layout, mouse, overlay,
         renderer::Quad,
@@ -11,18 +11,9 @@ use iced::{
     time::Instant,
     touch,
 };
-use iced_widget::core::text::{self, paragraph};
+use iced_widget::core::text;
 
-use super::{
-    Axis, DRAG_CHASE_DECAY, HANDLE_GAP, HANDLE_OVERLAP_WIDTH, HANDLE_WIDTH_DRAGGED,
-    HANDLE_WIDTH_IDLE, LABEL_HORIZONTAL_PADDING, LABEL_MIN_HEIGHT, RippleLayer,
-    STOP_INDICATOR_MIN_SEGMENT, STOP_INDICATOR_SIZE, STOP_INDICATOR_TRAILING_SPACE, Segment, Size,
-    SliderOverlay, Style, ValueIndicator, ValueLabel, center_at, cursor_main, decrement,
-    draw_stop_indicator, effective_step, factor_at, fill_track_segment, focus_ring_size,
-    handle_circle, handle_rect, huge_bounds, increment, keyboard_step, label_anchor, label_text,
-    main_len, range_f64, rect_at, slider_layout, slider_mouse_interaction, slider_size,
-    step_decimal_places, value_at, value_factor,
-};
+use super::*;
 use crate::{
     animation::motion::{self, Spring, SpringValue, fast_effects, fast_spatial},
     widget::ripple::Ripple,
@@ -39,10 +30,9 @@ struct State<P: text::Paragraph> {
 
     drag_display: f32,
     active: Thumb,
-    keyboard_modifiers: keyboard::Modifiers,
-    is_focused: bool,
 
-    keyboard_focus: bool,
+    common: CommonState<P>,
+
     ripples: [Ripple; 2],
     lower_width_spring: SpringValue<f32>,
     upper_width_spring: SpringValue<f32>,
@@ -50,31 +40,9 @@ struct State<P: text::Paragraph> {
     upper_position_spring: SpringValue<f32>,
 
     label_anchor_offset_spring: SpringValue<f32>,
-    label_scale_spring: SpringValue<f32>,
-    focus_ring_spring: SpringValue<f32>,
-    style_spring: SpringValue<Style>,
-    label_paragraph: paragraph::Plain<P>,
-    label_content: String,
-    last_effects_spring: Spring,
-    last_spatial_spring: Spring,
-    last_style: Style,
 }
 
 impl<P: text::Paragraph> State<P> {
-    fn set_effects_spring(&mut self, effects: Spring) {
-        self.label_scale_spring.spring.model = effects;
-        self.focus_ring_spring.spring.model = effects;
-        self.style_spring.spring.model = effects;
-    }
-
-    fn set_spatial_spring(&mut self, spatial: Spring) {
-        self.lower_width_spring.spring.model = spatial;
-        self.upper_width_spring.spring.model = spatial;
-        self.lower_position_spring.spring.model = spatial;
-        self.upper_position_spring.spring.model = spatial;
-        self.label_anchor_offset_spring.spring.model = spatial;
-    }
-
     fn position_spring(&self, thumb: Thumb) -> f32 {
         match thumb {
             Thumb::Lower => self.lower_position_spring.value(),
@@ -97,14 +65,12 @@ impl<P: text::Paragraph> State<P> {
     }
 
     fn is_animating(&self) -> bool {
-        !self.lower_width_spring.is_at_rest()
+        self.common.is_animating()
+            || !self.lower_width_spring.is_at_rest()
             || !self.upper_width_spring.is_at_rest()
             || !self.lower_position_spring.is_at_rest()
             || !self.upper_position_spring.is_at_rest()
             || !self.label_anchor_offset_spring.is_at_rest()
-            || !self.label_scale_spring.is_at_rest()
-            || !self.focus_ring_spring.is_at_rest()
-            || !self.style_spring.is_at_rest()
     }
 
     // Chase cursor during continuous drag, then step all springs.
@@ -122,30 +88,26 @@ impl<P: text::Paragraph> State<P> {
             }
         }
 
+        self.common.step(now);
         self.lower_width_spring.step(now);
         self.upper_width_spring.step(now);
         self.lower_position_spring.step(now);
         self.upper_position_spring.step(now);
         self.label_anchor_offset_spring.step(now);
-        self.label_scale_spring.step(now);
-        self.focus_ring_spring.step(now);
-        self.style_spring.step(now);
     }
 }
 
 impl<P: text::Paragraph> operation::Focusable for State<P> {
     fn is_focused(&self) -> bool {
-        self.is_focused
+        self.common.is_focused
     }
 
     fn focus(&mut self) {
-        self.is_focused = true;
-        self.keyboard_focus = true;
+        self.common.set_focused(true);
     }
 
     fn unfocus(&mut self) {
-        self.is_focused = false;
-        self.keyboard_focus = false;
+        self.common.set_focused(false);
     }
 }
 
@@ -452,21 +414,22 @@ where
 
     fn state(&self) -> iced::advanced::widget::tree::State {
         let now = Instant::now();
-        let effects_spring = self
-            .effects_spring
-            .unwrap_or(fast_effects(motion::Scheme::default()));
-        let spatial_spring = self
-            .spatial_spring
-            .unwrap_or(fast_spatial(motion::Scheme::default()));
+        let (effects_spring, spatial_spring) =
+            configured_springs(self.effects_spring, self.spatial_spring);
         let label_content = self.format_value(Thumb::Upper).unwrap_or_default();
 
         let state: State<Renderer::Paragraph> = State {
             drag: None,
             drag_display: value_factor(self.upper, &self.range),
             active: Thumb::Upper,
-            keyboard_modifiers: keyboard::Modifiers::default(),
-            is_focused: false,
-            keyboard_focus: false,
+            common: CommonState::new(
+                now,
+                effects_spring,
+                spatial_spring,
+                self.style,
+                label_content,
+                Renderer::ICON_FONT,
+            ),
             ripples: [Ripple::new(), Ripple::new()],
             lower_width_spring: SpringValue::new(HANDLE_WIDTH_IDLE, spatial_spring, now),
             upper_width_spring: SpringValue::new(HANDLE_WIDTH_IDLE, spatial_spring, now),
@@ -481,17 +444,6 @@ where
                 now,
             ),
             label_anchor_offset_spring: SpringValue::new(0.0, spatial_spring, now),
-            label_scale_spring: SpringValue::new(0.0, effects_spring, now),
-            focus_ring_spring: SpringValue::new(0.0, effects_spring, now),
-            style_spring: SpringValue::new(self.style, effects_spring, now),
-            label_paragraph: paragraph::Plain::new(label_text(
-                Renderer::ICON_FONT,
-                label_content.clone(),
-            )),
-            label_content,
-            last_effects_spring: effects_spring,
-            last_spatial_spring: spatial_spring,
-            last_style: self.style,
         };
 
         iced::advanced::widget::tree::State::new(state)
@@ -632,18 +584,26 @@ where
             );
         }
 
-        if let Some(effects_spring) = self.effects_spring
-            && effects_spring != state.last_effects_spring
-        {
-            state.last_effects_spring = effects_spring;
-            state.set_effects_spring(effects_spring);
-        }
-        if let Some(spatial_spring) = self.spatial_spring
-            && spatial_spring != state.last_spatial_spring
-        {
-            state.last_spatial_spring = spatial_spring;
-            state.set_spatial_spring(spatial_spring);
-        }
+        sync_spring_model(
+            &mut state.common.last_effects_spring,
+            self.effects_spring,
+            &mut [
+                &mut state.common.label_scale_spring.spring,
+                &mut state.common.focus_ring_spring.spring,
+                &mut state.common.style_spring.spring,
+            ],
+        );
+        sync_spring_model(
+            &mut state.common.last_spatial_spring,
+            self.spatial_spring,
+            &mut [
+                &mut state.lower_width_spring.spring,
+                &mut state.upper_width_spring.spring,
+                &mut state.lower_position_spring.spring,
+                &mut state.upper_position_spring.spring,
+                &mut state.label_anchor_offset_spring.spring,
+            ],
+        );
 
         let axis = self.axis;
         let range = self.range.clone();
@@ -654,19 +614,19 @@ where
         } else {
             0.0
         };
-        let continuous_drag = pixels_per_step < 12.0;
+        let continuous_drag = pixels_per_step < MIN_PIXELS_PER_STEP;
 
         let resolved_style = if enabled {
             self.style
         } else {
             self.style.disabled()
         };
-        if resolved_style != state.last_style {
-            state.last_style = resolved_style;
-            state.style_spring.reset(resolved_style, now);
-        } else {
-            state.style_spring.set_target(resolved_style, now);
-        }
+        transition_style(
+            &mut state.common.style_spring,
+            &mut state.common.last_style,
+            resolved_style,
+            now,
+        );
 
         let lower_target = value_factor(self.lower, &self.range);
         let upper_target = value_factor(self.upper, &self.range);
@@ -701,7 +661,7 @@ where
             && cursor.is_over(active_circle_at_entry);
         let label_visible_at_entry = !matches!(self.value_indicator, ValueIndicator::None)
             && enabled
-            && (state.drag.is_some() || cursor_over_active_at_entry || state.keyboard_focus);
+            && (state.drag.is_some() || cursor_over_active_at_entry || state.common.keyboard_focus);
 
         if state.drag.is_none() && cursor.is_over(bounds) {
             let lower_hit = self.enabled_of(Thumb::Lower) && cursor.is_over(lower_circle);
@@ -734,22 +694,20 @@ where
             }
         }
 
+        let focus_target = (state.common.keyboard_focus && enabled) as u32 as f32;
         state
+            .common
             .label_scale_spring
             .set_target(label_visible_at_entry as u32 as f32, now);
-        state
-            .focus_ring_spring
-            .set_target((state.keyboard_focus && enabled) as u32 as f32, now);
+        state.common.focus_ring_spring.set_target(focus_target, now);
 
         let label_content = self.format_value(state.active).unwrap_or_default();
-        if state.label_content != label_content {
-            state.label_content = label_content;
-
-            let _ = state.label_paragraph.update(label_text(
-                renderer.default_font(),
-                state.label_content.as_str(),
-            ));
-        }
+        sync_label_content(
+            &mut state.common.label_paragraph,
+            &mut state.common.label_content,
+            label_content,
+            renderer.default_font(),
+        );
 
         let drag_is_chasing = state.drag.is_some_and(|(_, target)| {
             target.is_some_and(|target| (target - state.drag_display).abs() > 0.001)
@@ -777,12 +735,12 @@ where
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
             | Event::Touch(touch::Event::FingerPressed { .. }) => {
                 if enabled && let Some(position) = cursor.position_over(bounds) {
-                    if !state.is_focused {
-                        state.is_focused = true;
+                    if !state.common.is_focused {
+                        state.common.is_focused = true;
                         shell.request_redraw();
                     }
 
-                    state.keyboard_focus = false;
+                    state.common.keyboard_focus = false;
 
                     let press_main = cursor_main(self.axis, bounds, position);
                     let lower_center = center_at(
@@ -820,28 +778,16 @@ where
             | Event::Touch(touch::Event::FingerLifted { .. })
             | Event::Touch(touch::Event::FingerLost { .. }) => {
                 if let Some((thumb, chase)) = state.drag.take() {
-                    let drag_display = state.drag_display;
-                    if continuous_drag && range_step > 0.0 {
-                        let snapped_factor = value_factor(self.value_of(thumb), &self.range) as f32;
-                        let spring = state.position_spring_mut(thumb);
-                        if (snapped_factor - drag_display).abs() > f32::EPSILON {
-                            spring.set_target(snapped_factor, now);
-                            if let Some(target) = chase {
-                                let gap = target - drag_display;
-                                if gap.abs() > f32::EPSILON {
-                                    spring.spring.velocity = 1.0 / DRAG_CHASE_DECAY;
-                                }
-                            }
-                        }
-                    } else if continuous_drag {
-                        if let Some(target) = chase {
-                            let gap = target - drag_display;
-                            if gap.abs() > f32::EPSILON {
-                                let spring = state.position_spring_mut(thumb);
-                                spring.set_target(target, now);
-                                spring.spring.velocity = 1.0 / DRAG_CHASE_DECAY;
-                            }
-                        }
+                    // Let the thumb settle onto its final position; the value is
+                    // already final, only the drawn position moves.
+                    let settle = if range_step > 0.0 {
+                        Some(value_factor(self.value_of(thumb), &self.range))
+                    } else {
+                        chase
+                    };
+
+                    if continuous_drag && let Some(target) = settle {
+                        settle_handle_spring(state.position_spring_mut(thumb), target, now);
                     }
 
                     if let Some(on_release) = self.on_release.clone() {
@@ -911,28 +857,19 @@ where
                 }
             }
             Event::Mouse(mouse::Event::WheelScrolled { delta })
-                if state.keyboard_modifiers.control() =>
+                if state.common.keyboard_modifiers.control() =>
             {
                 if cursor.is_over(bounds) && enabled {
-                    let delta = match delta {
-                        mouse::ScrollDelta::Lines { x: _, y } => y,
-                        mouse::ScrollDelta::Pixels { x: _, y } => y,
-                    };
-
                     let range = range_f64(&self.range);
                     let step = keyboard_step(
                         self.step,
                         self.shift_step,
-                        state.keyboard_modifiers.shift(),
+                        state.common.keyboard_modifiers.shift(),
                         &range,
                     );
 
                     let current: f64 = self.value_of(state.active).into();
-                    let new_value = if *delta < 0.0 {
-                        decrement(current, &range, step)
-                    } else {
-                        increment(current, &range, step)
-                    };
+                    let new_value = wheel_value(scroll_delta(delta), current, step, &range);
 
                     if let Some(new_value) = T::from_f64(new_value) {
                         let previous = (self.lower, self.upper);
@@ -944,30 +881,16 @@ where
                 }
             }
             Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) => {
-                if state.is_focused && enabled {
+                if state.common.is_focused && enabled {
                     let range = range_f64(&self.range);
                     let step = keyboard_step(
                         self.step,
                         self.shift_step,
-                        state.keyboard_modifiers.shift(),
+                        state.common.keyboard_modifiers.shift(),
                         &range,
                     );
                     let current: f64 = self.value_of(state.active).into();
-                    let page = (range.end - range.start) / 10.0;
-
-                    let new_value = match key {
-                        Key::Named(key::Named::ArrowUp | key::Named::ArrowRight) => {
-                            Some(increment(current, &range, step))
-                        }
-                        Key::Named(key::Named::ArrowDown | key::Named::ArrowLeft) => {
-                            Some(decrement(current, &range, step))
-                        }
-                        Key::Named(key::Named::Home) => Some(range.start),
-                        Key::Named(key::Named::End) => Some(range.end),
-                        Key::Named(key::Named::PageUp) => Some((current + page).min(range.end)),
-                        Key::Named(key::Named::PageDown) => Some((current - page).max(range.start)),
-                        _ => None,
-                    };
+                    let new_value = keyboard_value(key, current, step, &range);
 
                     if let Some(new_value) = new_value
                         && let Some(new_value) = T::from_f64(new_value)
@@ -983,14 +906,14 @@ where
                 key: Key::Named(key::Named::Escape),
                 ..
             }) => {
-                if state.is_focused {
-                    state.is_focused = false;
-                    state.keyboard_focus = false;
+                if state.common.is_focused {
+                    state.common.is_focused = false;
+                    state.common.keyboard_focus = false;
                     shell.capture_event();
                 }
             }
             Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => {
-                state.keyboard_modifiers = *modifiers;
+                state.common.keyboard_modifiers = *modifiers;
             }
             _ => {}
         }
@@ -1004,8 +927,9 @@ where
             && cursor.is_over(active_circle);
         let label_visible = !matches!(self.value_indicator, ValueIndicator::None)
             && enabled
-            && (state.drag.is_some() || cursor_over_active || state.keyboard_focus);
+            && (state.drag.is_some() || cursor_over_active || state.common.keyboard_focus);
         state
+            .common
             .label_scale_spring
             .set_target(label_visible as u32 as f32, now);
 
@@ -1047,7 +971,7 @@ where
         _viewport: &iced::Rectangle,
     ) {
         let state = tree.state.downcast_ref::<State<Renderer::Paragraph>>();
-        let style = state.style_spring.value();
+        let style = state.common.style_spring.value();
         let enabled = self.is_enabled();
         let bounds = layout.bounds();
         let len = main_len(self.axis, bounds);
@@ -1058,10 +982,7 @@ where
         let upper_width = state.upper_width_spring.value();
         let upper_center = center_at(len, upper_width, state.upper_position_spring.value());
 
-        let cross_center = match self.axis {
-            Axis::Horizontal => bounds.y + bounds.height / 2.0,
-            Axis::Vertical => bounds.x + bounds.width / 2.0,
-        };
+        let cross_center = cross_center(self.axis, bounds);
 
         let active = Segment::new(
             lower_center + lower_width / 2.0 + HANDLE_GAP,
@@ -1084,115 +1005,21 @@ where
             ),
         ];
 
-        if let Some(active) = active.valid() {
-            fill_track_segment(
-                renderer,
-                self.axis,
-                bounds,
-                active,
-                cross_center,
-                track_height,
-                self.size.corner_radius,
-                if enabled {
-                    style.active_track
-                } else {
-                    style.active_track_disabled
-                },
-            );
-        }
-
-        let inactive_color = if enabled {
-            style.inactive_track
-        } else {
-            style.inactive_track_disabled
-        };
-        for inactive in inactive.iter().filter_map(Segment::valid) {
-            fill_track_segment(
-                renderer,
-                self.axis,
-                bounds,
-                inactive,
-                cross_center,
-                track_height,
-                self.size.corner_radius,
-                inactive_color,
-            );
-        }
-
-        if self.stops {
-            let track = rect_at(
-                self.axis,
-                bounds,
-                0.0..=len,
-                cross_center - track_height / 2.0..=cross_center + track_height / 2.0,
-            );
-            let dot_color = |main: f32| -> Color {
-                if !enabled {
-                    style.stop_indicators_disabled
-                } else if active.valid().is_some_and(|active| active.contains(&main)) {
-                    style.stop_indicators_active
-                } else {
-                    style.stop_indicators_inactive
-                }
-            };
-
-            if let Some(count) = self.continuous_tick_count.filter(|count| *count > 1) {
-                let stride = (count.saturating_sub(1) as f32 / (len / 8.0).floor().max(1.0))
-                    .ceil()
-                    .max(1.0) as usize;
-                for i in (1..count).step_by(stride) {
-                    let fraction = f64::from(i) / f64::from(count);
-                    let main = len * fraction as f32;
-                    draw_stop_indicator(
-                        renderer,
-                        self.axis,
-                        bounds,
-                        cross_center,
-                        main,
-                        dot_color(main),
-                        track,
-                    );
-                }
-            }
-
-            for inactive in inactive.iter().filter_map(Segment::valid) {
-                if inactive.start <= 0.0
-                    && inactive.end - inactive.start > STOP_INDICATOR_MIN_SEGMENT
-                {
-                    let main = STOP_INDICATOR_TRAILING_SPACE + STOP_INDICATOR_SIZE / 2.0;
-                    draw_stop_indicator(
-                        renderer,
-                        self.axis,
-                        bounds,
-                        cross_center,
-                        main,
-                        if enabled {
-                            style.stop_indicator
-                        } else {
-                            style.stop_indicators_disabled
-                        },
-                        track,
-                    );
-                }
-                if inactive.end >= len && inactive.end - inactive.start > STOP_INDICATOR_MIN_SEGMENT
-                {
-                    let main = len - STOP_INDICATOR_TRAILING_SPACE - STOP_INDICATOR_SIZE / 2.0;
-                    draw_stop_indicator(
-                        renderer,
-                        self.axis,
-                        bounds,
-                        cross_center,
-                        main,
-                        if enabled {
-                            style.stop_indicator
-                        } else {
-                            style.stop_indicators_disabled
-                        },
-                        track,
-                    );
-                }
-            }
-        }
+        draw_track(
+            renderer,
+            self.axis,
+            bounds,
+            len,
+            cross_center,
+            track_height,
+            self.size.corner_radius,
+            enabled,
+            style,
+            active,
+            &inactive,
+            self.stops,
+            self.continuous_tick_count,
+        );
 
         let overlap =
             (upper_center - lower_center).abs() <= (lower_width + upper_width) / 2.0 + f32::EPSILON;
@@ -1267,7 +1094,7 @@ where
         tree: &'b mut Tree,
         layout: layout::Layout<'b>,
         _renderer: &Renderer,
-        _viewport: &iced::Rectangle,
+        viewport: &iced::Rectangle,
         translation: iced::Vector,
     ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
         let state = tree.state.downcast_ref::<State<Renderer::Paragraph>>();
@@ -1302,48 +1129,40 @@ where
             ),
         );
 
-        let style = state.style_spring.value();
-        let focus = state.focus_ring_spring.value();
-        let label_scale = state.label_scale_spring.value();
+        let style = state.common.style_spring.value();
+        let focus = state.common.focus_ring_spring.value();
+        let label_scale = state.common.label_scale_spring.value();
 
-        let mut ripples = [None, None];
-        if state.ripples[0].is_visible(lower_circle.size(), self.enabled_of(Thumb::Lower)) {
-            ripples[0] = Some(RippleLayer {
-                ripple: state.ripples[0],
-                layer: style.state_layer,
-                bounds: lower_circle,
-                enabled: self.enabled_of(Thumb::Lower),
-            });
-        }
-        if state.ripples[1].is_visible(upper_circle.size(), self.enabled_of(Thumb::Upper)) {
-            ripples[1] = Some(RippleLayer {
-                ripple: state.ripples[1],
-                layer: style.state_layer,
-                bounds: upper_circle,
-                enabled: self.enabled_of(Thumb::Upper),
-            });
-        }
+        let ripple_layer = |ripple: Ripple, circle: Rectangle, thumb: Thumb| {
+            let enabled = self.enabled_of(thumb);
+            ripple
+                .is_visible(circle.size(), enabled)
+                .then_some(RippleLayer {
+                    ripple,
+                    layer: style.state_layer,
+                    bounds: circle,
+                    enabled,
+                })
+        };
+        let ripples = [
+            ripple_layer(state.ripples[0], lower_circle, Thumb::Lower),
+            ripple_layer(state.ripples[1], upper_circle, Thumb::Upper),
+        ];
 
         let active_circle = match state.active {
             Thumb::Lower => lower_circle,
             Thumb::Upper => upper_circle,
         };
-        let focus_ring = (focus > 0.01 && enabled && state.keyboard_focus).then(|| {
-            let size = focus_ring_size(self.size.handle_height) * focus;
-            let full = focus_ring_size(self.size.handle_height);
-            (
-                Rectangle {
-                    x: active_circle.x + (active_circle.width - full) / 2.0 + (full - size) / 2.0,
-                    y: active_circle.y + (active_circle.height - full) / 2.0 + (full - size) / 2.0,
-                    width: size,
-                    height: size,
-                },
-                Color {
-                    a: style.focus_ring.a * focus,
-                    ..style.focus_ring
-                },
+        let focus_ring = if focus > 0.01 && enabled && state.common.keyboard_focus {
+            focus_ring_bounds(
+                active_circle,
+                self.size.handle_height,
+                focus,
+                style.focus_ring,
             )
-        });
+        } else {
+            None
+        };
 
         let active_factor = if state.drag.is_some() {
             state.position_spring(state.active)
@@ -1357,24 +1176,15 @@ where
             state.width_spring(state.active),
             center_at(len, state.width_spring(state.active), active_factor),
         );
-        let label = (label_scale > 0.01).then(|| {
-            let mut anchor = label_anchor(self.axis, &active_handle);
-            let travel = state.label_anchor_offset_spring.value();
-            match self.axis {
-                Axis::Horizontal => anchor.x += travel,
-                Axis::Vertical => anchor.y += travel,
-            }
-            ValueLabel {
-                axis: self.axis,
-                anchor,
-                width: state.label_paragraph.min_width() + 2.0 * LABEL_HORIZONTAL_PADDING,
-                height: LABEL_MIN_HEIGHT,
-                scale: label_scale,
-                background: style.label_container,
-                text_color: style.label_text,
-                content: state.label_content.clone(),
-            }
-        });
+        let label = value_label(
+            self.axis,
+            &active_handle,
+            state.label_anchor_offset_spring.value(),
+            &state.common.label_paragraph,
+            label_scale,
+            style,
+            &state.common.label_content,
+        );
 
         if ripples.iter().all(Option::is_none) && focus_ring.is_none() && label.is_none() {
             return None;
@@ -1384,7 +1194,9 @@ where
             ripples,
             focus_ring,
             label,
-        };
+            clip: Rectangle::default(),
+        }
+        .clipped(viewport)?;
 
         Some(overlay::Element::new(Box::new(overlay_element)))
     }

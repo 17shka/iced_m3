@@ -1,14 +1,13 @@
 use iced::time::Instant;
 
 use iced::{
-    Border, Color, Element, Length, Point, Radians, Rectangle, Size,
+    Border, Color, Element, Length, Radians, Rectangle, Size,
     advanced::{
-        Overlay, Widget,
+        Widget,
         layout::{self, Node},
         mouse, overlay,
         renderer::Quad,
     },
-    border::Radius,
 };
 use iced_widget::core::Svg;
 
@@ -19,7 +18,10 @@ use crate::{
     },
     style::StateLayer,
     theme::ColorScheme,
-    widget::{common_icons, ripple::Ripple},
+    widget::{
+        common_icons,
+        ripple::{Ripple, StateLayerOverlay},
+    },
 };
 
 const TRACK_SIZE: Size<f32> = Size {
@@ -648,7 +650,7 @@ where
         tree: &'b mut iced::advanced::widget::Tree,
         layout: iced::advanced::Layout<'b>,
         _renderer: &Renderer,
-        _viewport: &iced::Rectangle,
+        viewport: &iced::Rectangle,
         translation: iced::Vector,
     ) -> Option<iced::advanced::overlay::Element<'b, Message, Theme, Renderer>> {
         let state = tree.state.downcast_ref::<State>();
@@ -659,18 +661,24 @@ where
             state.handle_position_spring.value(),
         );
         let enabled = self.on_toggle.is_some();
-        (enabled && state.ripple.is_visible(ripple_bounds.size(), enabled)).then(|| {
-            let overlay = StateLayerOverlay {
-                ripple: state.ripple,
-                layer: *self.style.state_layer(self.selected),
-                bounds: Rectangle {
-                    x: ripple_bounds.x + translation.x,
-                    y: ripple_bounds.y + translation.y,
-                    ..ripple_bounds
-                },
-            };
-            overlay::Element::new(Box::new(overlay))
-        })
+
+        if !(enabled && state.ripple.is_visible(ripple_bounds.size(), enabled)) {
+            return None;
+        }
+
+        let overlay = StateLayerOverlay {
+            ripple: state.ripple,
+            layer: *self.style.state_layer(self.selected),
+            bounds: Rectangle {
+                x: ripple_bounds.x + translation.x,
+                y: ripple_bounds.y + translation.y,
+                ..ripple_bounds
+            },
+            clip: Rectangle::default(),
+        }
+        .clipped(viewport)?;
+
+        Some(overlay::Element::new(Box::new(overlay)))
     }
 }
 
@@ -697,42 +705,6 @@ fn state_layer_bounds(bounds: Rectangle, handle_size: f32, handle_center: f32) -
         y: handle_bounds.y + (handle_bounds.height - STATE_LAYER_SIZE) / 2.0,
         width: STATE_LAYER_SIZE,
         height: STATE_LAYER_SIZE,
-    }
-}
-
-struct StateLayerOverlay {
-    ripple: Ripple,
-    layer: StateLayer,
-    bounds: Rectangle,
-}
-
-impl<Message, Theme, Renderer> Overlay<Message, Theme, Renderer> for StateLayerOverlay
-where
-    Renderer: iced_widget::renderer::geometry::Renderer,
-{
-    fn layout(&mut self, _renderer: &Renderer, _bounds: Size) -> iced::advanced::layout::Node {
-        Node::new(Size {
-            width: self.bounds.width,
-            height: self.bounds.height,
-        })
-        .move_to(Point::new(self.bounds.x, self.bounds.y))
-    }
-
-    fn draw(
-        &self,
-        renderer: &mut Renderer,
-        _theme: &Theme,
-        _style: &iced::advanced::renderer::Style,
-        layout: iced::advanced::Layout<'_>,
-        _cursor: mouse::Cursor,
-    ) {
-        self.ripple.draw(
-            renderer,
-            layout.bounds(),
-            Radius::from(f32::MAX),
-            self.layer,
-            true,
-        );
     }
 }
 
