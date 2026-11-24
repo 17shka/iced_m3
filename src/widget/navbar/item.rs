@@ -28,9 +28,15 @@ pub use crate::widget::internal::navigation_common::NavigationItemStyle as Style
 pub use crate::widget::internal::navigation_common::{Colors, State};
 use crate::{
     animation::motion::{self, Spring, default_effects, fast_effects},
-    widget::internal::navigation_common::{
-        badge_children, build_badge, diff_badge, draw_icon, draw_indicator, draw_label,
-        handle_press, icon_paragraph, paragraph, update_springs,
+    widget::{
+        hybrid_icon::Icon,
+        internal::{
+            navigation_common::{
+                badge_children, build_badge, diff_badge, draw_icon, draw_indicator, draw_label,
+                handle_press, paragraph, update_springs,
+            },
+            text::CachedParagraph,
+        },
     },
 };
 
@@ -60,8 +66,8 @@ where
     color_spring: Option<Spring>,
 
     // Cache
-    label_paragraph: Option<Renderer::Paragraph>,
-    icon_paragraph: Option<Renderer::Paragraph>,
+    label_paragraph: CachedParagraph<Renderer::Font, Renderer::Paragraph>,
+    icon_paragraph: CachedParagraph<Renderer::Font, Renderer::Paragraph>,
     badge: Option<Element<'a, Message, Theme, Renderer>>,
 }
 
@@ -93,8 +99,8 @@ where
             active,
             active_transition_spring: None,
             color_spring: None,
-            label_paragraph: None,
-            icon_paragraph: None,
+            label_paragraph: CachedParagraph::default(),
+            icon_paragraph: CachedParagraph::default(),
             badge,
         }
     }
@@ -189,7 +195,35 @@ where
         renderer: &Renderer,
         limits: &iced::advanced::layout::Limits,
     ) -> iced::advanced::layout::Node {
-        self.icon_paragraph = icon_paragraph(renderer, self.content.icon(self.active), ICON_SIZE);
+        match self.content.icon(self.active) {
+            Icon::Text { text, font } => {
+                let text: &str = text;
+                let icon_size = Pixels(ICON_SIZE);
+                let line_height = text::LineHeight::Absolute(icon_size);
+                let font = *font;
+
+                self.icon_paragraph.update(
+                    text,
+                    Size::INFINITE,
+                    icon_size,
+                    line_height,
+                    font.map(Renderer::Font::from),
+                    iced::alignment::Vertical::Center,
+                    || {
+                        paragraph(
+                            renderer,
+                            text,
+                            Size::INFINITE,
+                            icon_size,
+                            line_height,
+                            font,
+                            iced::alignment::Vertical::Center,
+                        )
+                    },
+                );
+            }
+            Icon::Svg(_) => self.icon_paragraph.clear(),
+        }
 
         let icon_bounds = Size::new(ICON_SIZE, ICON_SIZE);
         let icon_node = Node::new(icon_bounds);
@@ -200,17 +234,32 @@ where
                 .layout(&mut tree.children[0], renderer, limits)
         });
 
-        let label_paragraph = paragraph(
-            renderer,
-            &self.content.label,
-            Size::INFINITE,
-            Pixels(LABEL_SIZE),
-            text::LineHeight::Absolute(Pixels(LABEL_LINE_HEIGHT)),
-            self.label_font,
-            iced::alignment::Vertical::Center,
-        );
-        let label_bounds = label_paragraph.min_bounds();
-        self.label_paragraph = Some(label_paragraph);
+        let label = self.content.label.as_ref();
+        let label_size = Pixels(LABEL_SIZE);
+        let label_line_height = text::LineHeight::Absolute(Pixels(LABEL_LINE_HEIGHT));
+
+        let label_bounds = self
+            .label_paragraph
+            .update(
+                label,
+                Size::INFINITE,
+                label_size,
+                label_line_height,
+                self.label_font.map(Renderer::Font::from),
+                iced::alignment::Vertical::Center,
+                || {
+                    paragraph(
+                        renderer,
+                        label,
+                        Size::INFINITE,
+                        label_size,
+                        label_line_height,
+                        self.label_font,
+                        iced::alignment::Vertical::Center,
+                    )
+                },
+            )
+            .min_bounds();
 
         match self.mode {
             Mode::Large { width } => {
@@ -320,7 +369,7 @@ where
             colors.icon,
         );
 
-        if let Some(label) = &self.label_paragraph {
+        if let Some(label) = self.label_paragraph.as_ref() {
             draw_label(renderer, label, label_bounds, colors.label);
         }
 

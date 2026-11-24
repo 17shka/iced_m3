@@ -382,6 +382,8 @@ struct State {
     width: SpringValue<f32>,
     /// Normalized expansion progress: 0 = collapsed, 1 = expanded
     expansion: SpringValue<f32>,
+    generation: u64,
+    auto_width: Option<(u64, f32)>,
 }
 
 /// An empty element used to keep the child tree shape stable when an optional
@@ -407,9 +409,9 @@ fn label_max_width(mode: Mode) -> Option<f32> {
     }
 }
 
-/// Builds throwaway item widgets used to measure widths and heights during
-/// layout. They are built once per layout pass and reused for both
-/// measurements.
+/// Builds throwaway item widgets used to measure item widths and heights during
+/// layout. Building them also shapes text, so callers only do it when a
+/// measurement is really needed.
 fn measure_items<'a, Message, Theme, Renderer>(
     nav_rail: &NavRail<'a, Message, Theme, Renderer>,
 ) -> Vec<Element<'a, Message, Theme, Renderer>>
@@ -448,6 +450,37 @@ where
         .collect()
 }
 
+fn measure_auto_width<'a, Message, Theme, Renderer>(
+    nav_rail: &NavRail<'a, Message, Theme, Renderer>,
+    renderer: &Renderer,
+) -> f32
+where
+    Message: 'a + Clone,
+    Theme: 'a,
+    Renderer: 'a
+        + iced::advanced::text::Renderer
+        + iced::advanced::svg::Renderer
+        + iced_widget::renderer::geometry::Renderer,
+    Renderer::Font: From<iced::Font>,
+{
+    const FULLY_EXPANDED: f32 = 1.0;
+
+    let limits = iced::advanced::layout::Limits::new(Size::ZERO, Size::new(f32::MAX, f32::MAX));
+    let mut max_item_width = 0.0f32;
+
+    for mut item_element in measure_items(nav_rail) {
+        let mut item_tree = Tree::new(item_element.as_widget());
+        item_tree.state.downcast_mut::<ItemState>().expansion = FULLY_EXPANDED;
+        let item_layout = item_element
+            .as_widget_mut()
+            .layout(&mut item_tree, renderer, &limits);
+
+        max_item_width = max_item_width.max(item_layout.bounds().width);
+    }
+
+    max_item_width.max(constants::CONTAINER_COLLAPSED_WIDTH)
+}
+
 impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer>
     for NavRail<'a, Message, Theme, Renderer>
 where
@@ -473,6 +506,8 @@ where
         let mut state = State {
             width: SpringValue::new(width, spring, now),
             expansion: SpringValue::new(expansion, spring, now),
+            generation: 0,
+            auto_width: None,
         };
         state.width.reset(width, now);
         state.expansion.reset(expansion, now);
@@ -483,6 +518,7 @@ where
     fn diff(&self, tree: &mut Tree) {
         let now = Instant::now();
         let state = tree.state.downcast_mut::<State>();
+        state.generation = state.generation.wrapping_add(1);
 
         let spring = self.resolve_expand_spring();
         state.width.set_model_if_some(spring);
@@ -564,31 +600,22 @@ where
         let expansion = rail_state.expansion.value().clamp(0.0, 1.0);
         let fab_visibility = (self.fab_element.is_some() && self.fab_visible) as usize as f32;
 
-        // Build the measuring widgets once and reuse them for both the width
-        // and the content-height measurements below.
-        let mut measure_widgets = match self.mode {
-            Mode::ExpandedAuto => measure_items(self),
-            _ if self.items_container.is_some() => measure_items(self),
-            _ => Vec::new(),
-        };
+        let mut measure_widgets =
+            if self.items_container.is_some() && self.item_alignment != ItemAlignment::Top {
+                measure_items(self)
+            } else {
+                Vec::new()
+            };
 
-        // Pre-layout pass to determine content width for ExpandedAuto
         let effective_target = match self.mode {
-            Mode::ExpandedAuto => {
-                let temp_limits =
-                    iced::advanced::layout::Limits::new(Size::ZERO, Size::new(f32::MAX, f32::MAX));
-                let mut max_item_width = 0.0f32;
-                for item_element in &mut measure_widgets {
-                    let mut temp_tree = Tree::new(item_element.as_widget());
-                    temp_tree.state.downcast_mut::<ItemState>().expansion = expansion;
-                    let item_layout =
-                        item_element
-                            .as_widget_mut()
-                            .layout(&mut temp_tree, renderer, &temp_limits);
-                    max_item_width = max_item_width.max(item_layout.bounds().width);
+            Mode::ExpandedAuto => match rail_state.auto_width {
+                Some((generation, width)) if generation == rail_state.generation => width,
+                _ => {
+                    let width = measure_auto_width(self, renderer);
+                    rail_state.auto_width = Some((rail_state.generation, width));
+                    width
                 }
-                max_item_width.max(collapsed_width)
-            }
+            },
             _ => self.mode.width().0,
         };
 
@@ -931,11 +958,20 @@ where
         state.width.set_model_if_some(spring);
         state.expansion.set_model_if_some(spring);
 
+        let width_before = state.width.value();
+        let expansion_before = state.expansion.value();
+
         state.width.step(now);
         state.expansion.step(now);
 
+        let layout_moved =
+            state.width.value() != width_before || state.expansion.value() != expansion_before;
+
         if !state.width.is_at_rest() || !state.expansion.is_at_rest() {
             shell.request_redraw();
+        }
+
+        if layout_moved {
             shell.invalidate_layout();
         }
     }

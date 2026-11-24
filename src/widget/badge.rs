@@ -21,6 +21,8 @@ where
 {
     badge_bounds: Option<Rectangle>,
     paragraph: Option<P>,
+    /// Text the cached `paragraph` was shaped from.
+    label: Option<String>,
 }
 
 impl<P> State<P>
@@ -31,6 +33,7 @@ where
         Self {
             badge_bounds: None,
             paragraph: None,
+            label: None,
         }
     }
 }
@@ -157,15 +160,20 @@ where
 
                 let state = tree.state.downcast_mut::<State<Renderer::Paragraph>>();
 
-                let paragraph = super::internal::text::paragraph(
-                    renderer,
-                    label,
-                    Size::INFINITE,
-                    Pixels(LABEL_FONT_SIZE),
-                    text::LineHeight::Relative(1.0),
-                    self.label_font,
-                    iced::alignment::Vertical::Top,
-                );
+                if state.paragraph.is_none() || state.label.as_deref() != Some(label.as_ref()) {
+                    state.paragraph = Some(super::internal::text::paragraph(
+                        renderer,
+                        label,
+                        Size::INFINITE,
+                        Pixels(LABEL_FONT_SIZE),
+                        text::LineHeight::Relative(1.0),
+                        self.label_font,
+                        iced::alignment::Vertical::Top,
+                    ));
+                    state.label = Some(label.as_ref().to_owned());
+                }
+
+                let paragraph = state.paragraph.as_ref().unwrap();
 
                 let width = (paragraph.min_bounds().width + 2.0 * BADGE_CONTENT_PADDING)
                     .max(LARGE_LABEL_SIZE);
@@ -185,7 +193,6 @@ where
                     height: LARGE_LABEL_SIZE,
                 };
 
-                state.paragraph = Some(paragraph);
                 state.badge_bounds = Some(badge);
 
                 match self.bounds_mode {

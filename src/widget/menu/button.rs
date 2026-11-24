@@ -19,7 +19,10 @@ use crate::{
         Action,
         common_icons::ARROW_RIGHT,
         hybrid_icon::Icon,
-        internal::interaction::{self, PressUpdate},
+        internal::{
+            interaction::{self, PressUpdate},
+            text::CachedParagraph,
+        },
         menu::{self, Menu},
         ripple::Ripple,
     },
@@ -107,9 +110,9 @@ where
 
     // Cache
     is_hovered: bool,
-    label_paragraph: Option<Renderer::Paragraph>,
-    supporting_text_paragraph: Option<Renderer::Paragraph>,
-    leading_icon_paragraph: Option<Renderer::Paragraph>,
+    label_paragraph: CachedParagraph<iced::Font, Renderer::Paragraph>,
+    supporting_text_paragraph: CachedParagraph<iced::Font, Renderer::Paragraph>,
+    leading_icon_paragraph: CachedParagraph<iced::Font, Renderer::Paragraph>,
     surface_element: Option<Element<'a, Message, Theme, Renderer>>,
 }
 
@@ -129,9 +132,9 @@ where
             style,
             label_font,
             is_hovered: false,
-            label_paragraph: None,
-            supporting_text_paragraph: None,
-            leading_icon_paragraph: None,
+            label_paragraph: CachedParagraph::default(),
+            supporting_text_paragraph: CachedParagraph::default(),
+            leading_icon_paragraph: CachedParagraph::default(),
             surface_element: None,
         }
     }
@@ -200,17 +203,32 @@ where
             );
 
             if let Icon::Text { text, font } = icon {
-                let paragraph = crate::widget::internal::text::paragraph(
-                    renderer,
+                let text: &str = text;
+                let size = menu::constants::ITEM_ICON_SIZE;
+                let line_height = text::LineHeight::Absolute(size);
+                let font = *font;
+
+                self.leading_icon_paragraph.update(
                     text,
                     bounds,
-                    menu::constants::ITEM_ICON_SIZE,
-                    text::LineHeight::Absolute(menu::constants::ITEM_ICON_SIZE),
-                    *font,
+                    size,
+                    line_height,
+                    font,
                     iced::alignment::Vertical::Top,
+                    || {
+                        crate::widget::internal::text::paragraph(
+                            renderer,
+                            text,
+                            bounds,
+                            size,
+                            line_height,
+                            font,
+                            iced::alignment::Vertical::Top,
+                        )
+                    },
                 );
-
-                self.leading_icon_paragraph = Some(paragraph);
+            } else {
+                self.leading_icon_paragraph.clear();
             }
 
             Node::new(bounds).move_to(Point::new(
@@ -247,25 +265,42 @@ where
                 .unwrap_or_default();
 
         let supporting_text_bounds = self.data.supporting_text.as_ref().map(|text| {
+            let text: &str = text;
             let bounds = Size::new(
                 max_center_width,
                 menu::constants::ITEM_SUPPORTING_TEXT_LINE_HEIGHT.0,
             );
+            let size = menu::constants::ITEM_SUPPORTING_TEXT_SIZE;
+            let line_height =
+                text::LineHeight::Absolute(menu::constants::ITEM_SUPPORTING_TEXT_LINE_HEIGHT);
+            let font = self.label_font;
 
-            let paragraph = crate::widget::internal::text::paragraph(
-                renderer,
+            self.supporting_text_paragraph.update(
                 text,
                 bounds,
-                menu::constants::ITEM_SUPPORTING_TEXT_SIZE,
-                text::LineHeight::Absolute(menu::constants::ITEM_SUPPORTING_TEXT_LINE_HEIGHT),
-                self.label_font,
+                size,
+                line_height,
+                font,
                 iced::alignment::Vertical::Top,
+                || {
+                    crate::widget::internal::text::paragraph(
+                        renderer,
+                        text,
+                        bounds,
+                        size,
+                        line_height,
+                        font,
+                        iced::alignment::Vertical::Top,
+                    )
+                },
             );
-
-            self.supporting_text_paragraph = Some(paragraph);
 
             bounds
         });
+
+        if supporting_text_bounds.is_none() {
+            self.supporting_text_paragraph.clear();
+        }
 
         let trailing_icon_node = trailing_icon_node.map(|n| {
             let width = n.bounds().width;
@@ -321,17 +356,27 @@ where
             (label_node, supporting_text_node)
         };
 
-        let label_paragraph = crate::widget::internal::text::paragraph(
-            renderer,
-            &self.data.label,
+        let label = self.data.label.as_ref();
+
+        self.label_paragraph.update(
+            label,
             label_bounds,
             menu::constants::ITEM_LABEL_FONT_SIZE,
             text::LineHeight::Absolute(menu::constants::ITEM_LABEL_LINE_HEIGHT),
             self.label_font,
             iced::alignment::Vertical::Top,
+            || {
+                crate::widget::internal::text::paragraph(
+                    renderer,
+                    label,
+                    label_bounds,
+                    menu::constants::ITEM_LABEL_FONT_SIZE,
+                    text::LineHeight::Absolute(menu::constants::ITEM_LABEL_LINE_HEIGHT),
+                    self.label_font,
+                    iced::alignment::Vertical::Top,
+                )
+            },
         );
-
-        self.label_paragraph = Some(label_paragraph);
 
         let children = [
             leading_icon_node,

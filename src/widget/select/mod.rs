@@ -1,4 +1,9 @@
-use std::rc::Rc;
+use std::{
+    cell::RefCell,
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
+    rc::Rc,
+};
 
 use iced::{
     Border, Color, Element, Event, Font, Length, Padding, Pixels, Point, Radians, Rectangle, Size,
@@ -473,6 +478,24 @@ where
 
         constants::ICON_PADDING + constants::ICON_SIZE.0 + clear
     }
+
+    fn width_fingerprint(&self, font: Font) -> u64 {
+        let mut hasher = DefaultHasher::new();
+
+        self.text_size.0.to_bits().hash(&mut hasher);
+        font.hash(&mut hasher);
+        self.placeholder.hash(&mut hasher);
+        self.padding.left.to_bits().hash(&mut hasher);
+        self.padding.right.to_bits().hash(&mut hasher);
+        self.icon_slot().to_bits().hash(&mut hasher);
+        self.reserved_width().to_bits().hash(&mut hasher);
+
+        for label in self.items.iter().filter_map(Item::label) {
+            label.hash(&mut hasher);
+        }
+
+        hasher.finish()
+    }
 }
 
 fn text_width<Renderer>(
@@ -525,26 +548,85 @@ where
         return String::new();
     }
 
-    let mut end = content.len();
+    let mut boundaries: Vec<usize> = content.char_indices().map(|(index, _)| index).collect();
+    boundaries.push(content.len());
 
-    // Walk backwards over char boundaries until the prefix plus the ellipsis fits.
-    while end > 0 {
-        end = content[..end]
-            .char_indices()
-            .next_back()
-            .map_or(0, |(index, _)| index);
+    let mut fits = 0;
+    let mut overflows = boundaries.len() - 1;
 
-        let candidate = content[..end].trim_end();
+    while overflows - fits > 1 {
+        let middle = (fits + overflows) / 2;
+        let candidate = content[..boundaries[middle]].trim_end();
 
         if text_width(renderer, candidate, size, font) + ellipsis_width <= max_width {
-            let mut truncated = String::with_capacity(candidate.len() + ELLIPSIS.len_utf8());
-            truncated.push_str(candidate);
-            truncated.push(ELLIPSIS);
-            return truncated;
+            fits = middle;
+        } else {
+            overflows = middle;
         }
     }
 
-    ELLIPSIS.to_string()
+    let mut truncated = content[..boundaries[fits]].trim_end().to_owned();
+    truncated.push(ELLIPSIS);
+    truncated
+}
+
+const FIT_CACHE_CAPACITY: usize = 64;
+
+#[derive(Debug, Default)]
+struct FitCache {
+    entries: RefCell<Vec<FitEntry>>,
+}
+
+#[derive(Debug)]
+struct FitEntry {
+    content: String,
+    fitted: String,
+    max_width: f32,
+    size: Pixels,
+    font: Font,
+}
+
+impl FitCache {
+    fn fit<Renderer>(
+        &self,
+        renderer: &Renderer,
+        content: &str,
+        max_width: f32,
+        size: Pixels,
+        font: Font,
+    ) -> String
+    where
+        Renderer: text::Renderer<Font = Font>,
+    {
+        let mut entries = self.entries.borrow_mut();
+
+        let cached = entries.iter().find(|entry| {
+            entry.max_width == max_width
+                && entry.size == size
+                && entry.font == font
+                && entry.content == content
+        });
+
+        if let Some(entry) = cached {
+            return entry.fitted.clone();
+        }
+
+        let fitted = ellipsize(renderer, content, max_width, size, font);
+
+        if entries.len() >= FIT_CACHE_CAPACITY {
+            entries.remove(0);
+        }
+
+        entries.push(FitEntry {
+            content: content.to_owned(),
+            fitted: fitted.clone(),
+            max_width,
+            size,
+            font,
+        });
+
+        fitted
+    }
 }
 
 fn draw_icon<Renderer>(
@@ -744,24 +826,37 @@ where
         Size::new(self.width, Length::Fixed(constants::FIELD_HEIGHT.0))
     }
 
-    fn layout(&mut self, _tree: &mut Tree, renderer: &Renderer, limits: &Limits) -> layout::Node {
+    fn layout(&mut self, tree: &mut Tree, renderer: &Renderer, limits: &Limits) -> layout::Node {
         let font = self.font.unwrap_or_else(|| renderer.default_font());
 
-        let labels_width = self
-            .items
-            .iter()
-            .filter_map(Item::label)
-            .map(|label| text_width(renderer, label, self.text_size, font))
-            .fold(0.0_f32, f32::max);
+        let fingerprint = self.width_fingerprint(font);
+        let state = tree.state.downcast_mut::<State>();
 
-        let placeholder_width = if self.placeholder.is_empty() {
-            0.0
-        } else {
-            text_width(renderer, &self.placeholder, self.text_size, font)
+        let content_width = match state.intrinsic_width {
+            Some((cached, width)) if cached == fingerprint => width,
+            _ => {
+                let labels_width = self
+                    .items
+                    .iter()
+                    .filter_map(Item::label)
+                    .map(|label| text_width(renderer, label, self.text_size, font))
+                    .fold(0.0_f32, f32::max);
+
+                let placeholder_width = if self.placeholder.is_empty() {
+                    0.0
+                } else {
+                    text_width(renderer, &self.placeholder, self.text_size, font)
+                };
+
+                let width = labels_width.max(placeholder_width);
+                state.intrinsic_width = Some((fingerprint, width));
+
+                width
+            }
         };
 
         let intrinsic = Size::new(
-            labels_width.max(placeholder_width)
+            content_width
                 + self.padding.left
                 + self.padding.right
                 + self.icon_slot()
@@ -857,7 +952,9 @@ where
 
             renderer.fill_text(
                 Text {
-                    content: ellipsize(renderer, label, text_width, self.text_size, font),
+                    content: state
+                        .fit
+                        .fit(renderer, label, text_width, self.text_size, font),
                     bounds: Size::new(text_width, line_height.to_absolute(self.text_size).0),
                     size: self.text_size,
                     line_height,
@@ -1192,6 +1289,8 @@ struct State {
     field_tooltip: tooltip::Hover,
     /// Hover delay of the tooltips shown inside the open menu (clear button, truncated option).
     menu_tooltip: tooltip::Hover,
+    fit: FitCache,
+    intrinsic_width: Option<(u64, f32)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -1237,6 +1336,8 @@ impl Default for State {
             blink: Blink::default(),
             field_tooltip: tooltip::Hover::default(),
             menu_tooltip: tooltip::Hover::default(),
+            fit: FitCache::default(),
+            intrinsic_width: None,
         }
     }
 }
@@ -2412,7 +2513,7 @@ where
                 if text_width > 0.0 {
                     renderer.fill_text(
                         Text {
-                            content: ellipsize(
+                            content: self.state.fit.fit(
                                 renderer,
                                 label,
                                 text_width,

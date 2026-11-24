@@ -733,8 +733,8 @@ where
     // Cache
     is_hovered: bool,
     style_change_checked: bool,
-    icon_paragraph: Option<Renderer::Paragraph>,
-    label_paragraph: Option<Renderer::Paragraph>,
+    icon_paragraph: super::internal::text::CachedParagraph<Renderer::Font, Renderer::Paragraph>,
+    label_paragraph: super::internal::text::CachedParagraph<Renderer::Font, Renderer::Paragraph>,
 }
 
 impl<'a, Message, Renderer> Button<'a, Message, Renderer>
@@ -756,8 +756,8 @@ where
             corner_radius_spring: None,
 
             is_hovered: false,
-            icon_paragraph: None,
-            label_paragraph: None,
+            icon_paragraph: super::internal::text::CachedParagraph::default(),
+            label_paragraph: super::internal::text::CachedParagraph::default(),
             style_change_checked: false,
         }
     }
@@ -905,16 +905,34 @@ where
             iced::Size::new(padding.left + padding.right, padding.top + padding.bottom);
         let shrinked_limits = limits.shrink(limits_shrink);
 
+        let bounds = shrinked_limits.max();
+        let icon_size = self.size.icon_size;
+        let icon_line_height = text::LineHeight::Absolute(icon_size);
+
         if let Some(Icon::Text { text, font }) = self.content.get_icon() {
-            self.icon_paragraph = Some(super::internal::text::paragraph(
-                renderer,
+            let font = font.map(Renderer::Font::from);
+
+            self.icon_paragraph.update(
                 text,
-                shrinked_limits.max(),
-                self.size.icon_size,
-                text::LineHeight::Absolute(self.size.icon_size),
-                font.map(Renderer::Font::from),
+                bounds,
+                icon_size,
+                icon_line_height,
+                font,
                 iced::alignment::Vertical::Top,
-            ));
+                || {
+                    super::internal::text::paragraph(
+                        renderer,
+                        text,
+                        bounds,
+                        icon_size,
+                        icon_line_height,
+                        font,
+                        iced::alignment::Vertical::Top,
+                    )
+                },
+            );
+        } else {
+            self.icon_paragraph.clear();
         }
 
         let contains_icon = matches!(&self.content, Content::Icon(_) | Content::Full { .. });
@@ -923,26 +941,38 @@ where
             Node::new(iced::Size::new(icon_size.0, icon_size.0))
         });
 
-        let paragraph = if self.size.label_size.0 > 0.0 {
-            self.content.get_label().map(|label| {
-                super::internal::text::paragraph(
-                    renderer,
-                    label,
-                    shrinked_limits.max(),
-                    self.size.label_size,
-                    text::LineHeight::Relative(1.0),
-                    self.label_font.map(Renderer::Font::from),
-                    iced::alignment::Vertical::Top,
-                )
-            })
+        let label_node = if self.size.label_size.0 > 0.0
+            && let Some(label) = self.content.get_label()
+        {
+            let label_size = self.size.label_size;
+            let line_height = text::LineHeight::Relative(1.0);
+            let font = self.label_font.map(Renderer::Font::from);
+
+            let paragraph = self.label_paragraph.update(
+                label,
+                bounds,
+                label_size,
+                line_height,
+                font,
+                iced::alignment::Vertical::Top,
+                || {
+                    super::internal::text::paragraph(
+                        renderer,
+                        label,
+                        bounds,
+                        label_size,
+                        line_height,
+                        font,
+                        iced::alignment::Vertical::Top,
+                    )
+                },
+            );
+
+            Some(Node::new(paragraph.min_bounds()))
         } else {
+            self.label_paragraph.clear();
             None
         };
-
-        let label_node = paragraph
-            .as_ref()
-            .map(|paragraph| Node::new(paragraph.min_bounds()));
-        self.label_paragraph = paragraph;
 
         let spacing = if icon_node.is_some() && label_node.is_some() {
             self.size.spacing
@@ -1115,7 +1145,7 @@ where
             style.container,
         );
 
-        if let Some(icon) = &self.icon_paragraph
+        if let Some(icon) = self.icon_paragraph.as_ref()
             && let Some(layout) = children.next()
         {
             let bounds = layout.bounds();
@@ -1135,7 +1165,7 @@ where
             );
         }
 
-        if let Some(label) = &self.label_paragraph
+        if let Some(label) = self.label_paragraph.as_ref()
             && let Some(layout) = children.next()
         {
             renderer.fill_paragraph(label, layout.bounds().position(), style.label, bounds);

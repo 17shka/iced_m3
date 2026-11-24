@@ -48,9 +48,12 @@ pub use constants::*;
 use crate::{
     style::{DIM_ALPHA, Elevation},
     theme::ColorScheme,
-    widget::menu::{
-        button::{Button, ButtonWidget, MenuAction},
-        group::GroupElement,
+    widget::{
+        internal::text::CachedParagraph,
+        menu::{
+            button::{Button, ButtonWidget, MenuAction},
+            group::GroupElement,
+        },
     },
 };
 
@@ -400,7 +403,7 @@ where
                             Item::Separator => None,
                         })
                         .collect(),
-                    label_paragraph: None,
+                    label_paragraph: CachedParagraph::default(),
                 }
                 .into()
             })

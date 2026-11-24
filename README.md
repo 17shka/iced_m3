@@ -45,17 +45,17 @@ Widgets used internally by `iced_m3` for other widgets that may also be useful o
 Those are gated behind the `advanced` feature.
 
 # Localization
-Some widgets ship with their own text: the `TextInput` context menu, the default `Dialog` title,
-the `Select` search placeholder. English is bundled (`resources/locales/en.yml`); every other
-language comes from your application. Enable the `rust-i18n` feature (alias `i18n`) to translate
-them:
+Some widgets ship with text of their own (the `TextInput` context menu, `Dialog`, `Select` search,
+`NavRail` toggles, `FabMenu` actions, the theme picker). English is bundled; other languages come
+from your application through [`rust-i18n`](https://crates.io/crates/rust-i18n), enabled with the
+`rust-i18n` feature:
 
 ```toml
 iced_m3 = { version = "...", features = ["rust-i18n"] }
 ```
 
-Register the library once at startup and provide its keys under the `iced_m3` namespace. The
-application and `iced_m3` must depend on the same `rust-i18n` version.
+Register the library once at startup and override keys under the `iced_m3` namespace. Both crates
+must use the same `rust-i18n` version.
 
 ```rust,ignore
 rust_i18n::i18n!("locales", fallback = "en");
@@ -74,35 +74,22 @@ iced_m3:
     dialog: { title: "Заголовок" }
     select: { search: "Поиск" }
     theme: { system: "Системная", light: "Светлая", dark: "Тёмная" }
-    text_input:
-      undo: "Отменить"
-      redo: "Повторить"
-      copy: "Копировать"
-      cut: "Вырезать"
-      paste: "Вставить"
-      select_word: "Выделить слово"
-      select_all: "Выделить всё"
+    text_input: { copy: "Копировать", paste: "Вставить", select_all: "Выделить всё" }
 ```
 
-Missing keys fall back to the bundled English, so `locales/en.yml` can omit the `iced_m3` section
-entirely. Switch locales with `rust_i18n::set_locale` (re-exported as
-`iced_m3::i18n::set_locale`); see `demos/localization` for a complete example.
+Only keys you want to change are needed — the rest fall back to English. Switch languages with
+`rust_i18n::set_locale` (re-exported as `iced_m3::i18n::set_locale`);
+`iced_m3::i18n::available_locales()` returns the `(code, name)` pairs. Full example:
+`demos/localization`.
 
-## Pickers
-Both helpers return a regular `Select`, so its builders (`.width()`, `.placeholder()`, …) apply:
+`language_select` and `theme_select` wrap this into a ready-made `Select`:
 
 ```rust,ignore
-// Locales of the application plus English from the library.
-iced_m3::widget::language_select(theme, Some(current), Message::SetLocale)
-    .width(Length::Fixed(280.0));
-
-// System preference (the default), light and dark.
-iced_m3::widget::theme_select(theme, theme.mode, Message::SetTheme)
-    .width(Length::Fixed(220.0));
+widget::language_select(theme, Some(locale), Message::SetLocale);
+widget::theme_select(theme, theme.mode, Message::SetTheme);
 ```
 
-`iced_m3::i18n::available_locales()` exposes the `(code, name)` list if you want a custom control.
-`Mode::System` follows `iced::system::theme_changes()`: store it in `Theme::system_mode`, keep the
-picker's value in `Theme::mode`, and read the painted mode from `Theme::resolved_mode()`.
+For `Mode::System`, store the platform preference in `Theme::system_mode`, the user's choice in
+`Theme::mode`, and paint `Theme::resolved_mode()`.
 
-With the feature disabled, the English fallback is embedded, so no extra dependency is required.
+Without the feature, English text is embedded and `rust-i18n` is not required.

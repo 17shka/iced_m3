@@ -22,6 +22,8 @@ pub const ITEM_LARGE_LABEL_SIZE: f32 = 14.0;
 pub const ITEM_LARGE_LABEL_LINE_HEIGHT: f32 = 20.0;
 
 const ITEM_LARGE_LABEL_START_X: f32 = 28.0;
+const ITEM_LABEL_TRAVEL_PORTION: f32 = 0.75;
+const ITEM_LARGE_LABEL_FIT_SLACK: f32 = 1.0;
 
 pub const ICON_SIZE: f32 = 24.0;
 
@@ -112,26 +114,58 @@ where
         return (String::new(), true);
     }
 
-    let mut end = content.len();
+    let mut boundaries: Vec<usize> = content.char_indices().map(|(index, _)| index).collect();
+    boundaries.push(content.len());
 
-    // Walk backwards over char boundaries until the prefix plus the ellipsis fits.
-    while end > 0 {
-        end = content[..end]
-            .char_indices()
-            .next_back()
-            .map_or(0, |(index, _)| index);
+    let mut fits = 0;
+    let mut overflows = boundaries.len() - 1;
 
-        let candidate = content[..end].trim_end();
+    while overflows - fits > 1 {
+        let middle = (fits + overflows) / 2;
+        let candidate = content[..boundaries[middle]].trim_end();
 
         if width_of(candidate) + ellipsis_width <= max_width {
-            let mut truncated = String::with_capacity(candidate.len() + ELLIPSIS.len_utf8());
-            truncated.push_str(candidate);
-            truncated.push(ELLIPSIS);
-            return (truncated, true);
+            fits = middle;
+        } else {
+            overflows = middle;
         }
     }
 
-    (ELLIPSIS.to_string(), true)
+    let mut truncated = content[..boundaries[fits]].trim_end().to_owned();
+    truncated.push(ELLIPSIS);
+
+    (truncated, true)
+}
+
+struct LabelBlend {
+    travel: f32,
+    small: f32,
+    large: f32,
+}
+
+fn label_blend(expansion: f32, hide_when_collapsed: bool) -> LabelBlend {
+    let expansion = expansion.clamp(0.0, 1.0);
+
+    if hide_when_collapsed {
+        return LabelBlend {
+            travel: 1.0,
+            small: 0.0,
+            large: expansion,
+        };
+    }
+
+    let swap = ((expansion - ITEM_LABEL_TRAVEL_PORTION) / (1.0 - ITEM_LABEL_TRAVEL_PORTION))
+        .clamp(0.0, 1.0);
+
+    LabelBlend {
+        travel: (expansion / ITEM_LABEL_TRAVEL_PORTION).min(1.0),
+        small: 1.0 - swap,
+        large: swap,
+    }
+}
+
+fn lerp_point(from: Point, to: Point, t: f32) -> Point {
+    Point::new(lerp(from.x, to.x, t).round(), lerp(from.y, to.y, t).round())
 }
 
 pub struct Item<'a, Message, Theme, Renderer>
@@ -159,6 +193,8 @@ where
     large_label_paragraph: Option<Renderer::Paragraph>,
     small_label_text: Option<String>,
     large_label_text: Option<String>,
+    small_label_fit_width: Option<f32>,
+    large_label_fit_width: Option<f32>,
     small_label_truncated: bool,
     large_label_truncated: bool,
     icon_paragraph: Option<Renderer::Paragraph>,
@@ -204,6 +240,8 @@ where
             large_label_paragraph: None,
             small_label_text: None,
             large_label_text: None,
+            small_label_fit_width: None,
+            large_label_fit_width: None,
             small_label_truncated: false,
             large_label_truncated: false,
             icon_paragraph: None,
@@ -289,7 +327,10 @@ where
     ) -> iced::advanced::layout::Node {
         let expansion = tree.state.downcast_ref::<State>().expansion.clamp(0.0, 1.0);
 
-        self.icon_paragraph = icon_paragraph(renderer, self.content.icon(self.active), ICON_SIZE);
+        if self.icon_paragraph.is_none() {
+            self.icon_paragraph =
+                icon_paragraph(renderer, self.content.icon(self.active), ICON_SIZE);
+        }
 
         // A label that does not fit the rail is ellipsized; hovering the item then shows the full
         // text as a tooltip. Only the label that is actually visible for the current mode is
@@ -303,54 +344,58 @@ where
             _ => f32::INFINITY,
         };
 
-        let (small_text, small_truncated) = fit_label(
-            renderer,
-            &self.content.label,
-            small_max_width,
-            Pixels(ITEM_SMALL_LABEL_SIZE),
-            text::LineHeight::Absolute(Pixels(ITEM_SMALL_LABEL_LINE_HEIGHT)),
-            self.label_font,
-        );
-        let (large_text, large_truncated) = fit_label(
-            renderer,
-            &self.content.label,
-            large_max_width,
-            Pixels(ITEM_LARGE_LABEL_SIZE),
-            text::LineHeight::Absolute(Pixels(ITEM_LARGE_LABEL_LINE_HEIGHT)),
-            self.label_font,
-        );
-
-        // Labels hidden while collapsed are spelled out by the wrapping `Tooltip` instead.
-        self.small_label_truncated = small_truncated && !self.hide_labels_when_collapsed;
-        self.large_label_truncated = large_truncated;
-
-        if self.small_label_paragraph.is_none()
-            || self.small_label_text.as_deref() != Some(small_text.as_str())
-        {
-            self.small_label_paragraph = Some(paragraph(
+        if self.small_label_fit_width != Some(small_max_width) {
+            let (small_text, small_truncated) = fit_label(
                 renderer,
-                &small_text,
-                Size::INFINITE,
+                &self.content.label,
+                small_max_width,
                 Pixels(ITEM_SMALL_LABEL_SIZE),
                 text::LineHeight::Absolute(Pixels(ITEM_SMALL_LABEL_LINE_HEIGHT)),
                 self.label_font,
-                iced::alignment::Vertical::Center,
-            ));
-            self.small_label_text = Some(small_text);
+            );
+
+            self.small_label_truncated = small_truncated && !self.hide_labels_when_collapsed;
+            self.small_label_fit_width = Some(small_max_width);
+
+            if self.small_label_text.as_deref() != Some(small_text.as_str()) {
+                self.small_label_paragraph = Some(paragraph(
+                    renderer,
+                    &small_text,
+                    Size::INFINITE,
+                    Pixels(ITEM_SMALL_LABEL_SIZE),
+                    text::LineHeight::Absolute(Pixels(ITEM_SMALL_LABEL_LINE_HEIGHT)),
+                    self.label_font,
+                    iced::alignment::Vertical::Center,
+                ));
+                self.small_label_text = Some(small_text);
+            }
         }
-        if self.large_label_paragraph.is_none()
-            || self.large_label_text.as_deref() != Some(large_text.as_str())
-        {
-            self.large_label_paragraph = Some(paragraph(
+
+        if self.large_label_fit_width != Some(large_max_width) {
+            let (large_text, large_truncated) = fit_label(
                 renderer,
-                &large_text,
-                Size::INFINITE,
+                &self.content.label,
+                large_max_width,
                 Pixels(ITEM_LARGE_LABEL_SIZE),
                 text::LineHeight::Absolute(Pixels(ITEM_LARGE_LABEL_LINE_HEIGHT)),
                 self.label_font,
-                iced::alignment::Vertical::Center,
-            ));
-            self.large_label_text = Some(large_text);
+            );
+
+            self.large_label_truncated = large_truncated;
+            self.large_label_fit_width = Some(large_max_width);
+
+            if self.large_label_text.as_deref() != Some(large_text.as_str()) {
+                self.large_label_paragraph = Some(paragraph(
+                    renderer,
+                    &large_text,
+                    Size::INFINITE,
+                    Pixels(ITEM_LARGE_LABEL_SIZE),
+                    text::LineHeight::Absolute(Pixels(ITEM_LARGE_LABEL_LINE_HEIGHT)),
+                    self.label_font,
+                    iced::alignment::Vertical::Center,
+                ));
+                self.large_label_text = Some(large_text);
+            }
         }
 
         let small_bounds = self
@@ -392,11 +437,13 @@ where
 
         let pill_height = lerp(INDICATOR_SMALL_HEIGHT, INDICATOR_LARGE_HEIGHT, expansion).round();
         let pill_width = lerp(INDICATOR_SMALL_WIDTH, hug_width, expansion).round();
-        let pill_x = if self.expanded {
-            INDICATOR_LARGE_PADDING
-        } else {
-            super::constants::ITEM_OFFSET
-        };
+
+        let pill_x = lerp(
+            super::constants::ITEM_OFFSET,
+            INDICATOR_LARGE_PADDING,
+            expansion,
+        )
+        .round();
         let pill_y = lerp(small_pill_y, 0.0, expansion).round();
         let node_height = lerp(small_height, INDICATOR_LARGE_HEIGHT, expansion).round();
 
@@ -532,6 +579,35 @@ where
 
         let colors = state.common.color_spring.value();
 
+        let label_limit = indicator_bounds.x + indicator_bounds.width - INDICATOR_LARGE_PADDING;
+        let room_clip_width =
+            (label_limit - large_label_bounds.x).max(0.0) + ITEM_LARGE_LABEL_FIT_SLACK;
+        let blend = label_blend(expansion, self.hide_labels_when_collapsed);
+
+        if blend.small > 0.0
+            && let Some(label) = &self.small_label_paragraph
+        {
+            let mut bounds = Rectangle::new(
+                lerp_point(
+                    small_label_bounds.position(),
+                    large_label_bounds.position(),
+                    blend.travel,
+                ),
+                small_label_bounds.size(),
+            );
+
+            if blend.travel >= 1.0 {
+                bounds.width = bounds.width.min(room_clip_width);
+            }
+
+            draw_label(
+                renderer,
+                label,
+                bounds,
+                colors.label.scale_alpha(blend.small),
+            );
+        }
+
         draw_icon(
             renderer,
             self.icon_paragraph.as_ref(),
@@ -540,49 +616,18 @@ where
             colors.icon,
         );
 
-        let large_label_alpha = if self.hide_labels_when_collapsed {
-            // When labels are hidden in collapsed state, smoothly fade the
-            // large label in/out alongside the expansion animation.
-            expansion.clamp(0.0, 1.0)
-        } else {
-            let show_labels = expansion > 0.001;
-            if show_labels {
-                ((expansion - 0.6) / 0.4).clamp(0.0, 1.0)
-            } else {
-                0.0
-            }
-        };
-        let small_label_alpha = if self.hide_labels_when_collapsed {
-            0.0
-        } else {
-            let show_small = expansion < 0.999;
-            if show_small {
-                (1.0 - expansion * 3.0).clamp(0.0, 1.0)
-            } else {
-                0.0
-            }
-        };
-
-        if small_label_alpha > 0.0
-            && let Some(label) = &self.small_label_paragraph
-        {
-            draw_label(
-                renderer,
-                label,
-                small_label_bounds,
-                colors.label.scale_alpha(small_label_alpha),
-            );
-        }
-
-        if large_label_alpha > 0.0
+        if blend.large > 0.0
             && let Some(label) = &self.large_label_paragraph
         {
-            draw_label(
-                renderer,
-                label,
-                large_label_bounds,
-                colors.label.scale_alpha(large_label_alpha),
+            let clip = Rectangle::new(
+                large_label_bounds.position(),
+                Size::new(
+                    large_label_bounds.width.min(room_clip_width),
+                    large_label_bounds.height,
+                ),
             );
+
+            draw_label(renderer, label, clip, colors.label.scale_alpha(blend.large));
         }
 
         if let Some(badge) = &self.badge {
@@ -720,3 +765,87 @@ crate::macros::impl_element_from!(
             + iced_widget::renderer::geometry::Renderer,
         Renderer::Font: From<iced::Font>,
 );
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn collapsed_shows_only_the_short_label() {
+        let blend = label_blend(0.0, false);
+
+        assert_eq!(blend.travel, 0.0);
+        assert_eq!(blend.small, 1.0);
+        assert_eq!(blend.large, 0.0);
+    }
+
+    #[test]
+    fn expanded_shows_only_the_long_label() {
+        let blend = label_blend(1.0, false);
+
+        assert_eq!(blend.travel, 1.0);
+        assert_eq!(blend.small, 0.0);
+        assert_eq!(blend.large, 1.0);
+    }
+
+    #[test]
+    fn label_arrives_before_its_text_changes() {
+        let blend = label_blend(ITEM_LABEL_TRAVEL_PORTION, false);
+
+        assert_eq!(blend.travel, 1.0);
+        assert_eq!(blend.small, 1.0);
+        assert_eq!(blend.large, 0.0);
+    }
+
+    #[test]
+    fn text_never_changes_while_the_label_is_moving() {
+        for step in 0..=(ITEM_LABEL_TRAVEL_PORTION * 100.0).min(100.0) as u32 {
+            let blend = label_blend(step as f32 / 100.0, false);
+
+            assert_eq!(blend.small, 1.0);
+            assert_eq!(blend.large, 0.0);
+        }
+    }
+
+    #[test]
+    fn text_swaps_after_the_label_has_arrived() {
+        let mid = label_blend((ITEM_LABEL_TRAVEL_PORTION + 1.0) / 2.0, false);
+
+        assert_eq!(mid.travel, 1.0);
+        assert!(mid.small > 0.0 && mid.large > 0.0);
+    }
+
+    #[test]
+    fn labels_never_leave_a_frame_without_one() {
+        for step in 0..=100 {
+            let blend = label_blend(step as f32 / 100.0, false);
+
+            assert!((blend.small + blend.large - 1.0).abs() < f32::EPSILON);
+            assert!((0.0..=1.0).contains(&blend.small));
+            assert!((0.0..=1.0).contains(&blend.large));
+            assert!((0.0..=1.0).contains(&blend.travel));
+        }
+    }
+
+    #[test]
+    fn label_travels_monotonically() {
+        let mut previous = 0.0;
+
+        for step in 0..=100 {
+            let travel = label_blend(step as f32 / 100.0, false).travel;
+
+            assert!(travel >= previous);
+            previous = travel;
+        }
+    }
+
+    #[test]
+    fn hidden_labels_never_show_the_short_one() {
+        for step in 0..=100 {
+            assert_eq!(label_blend(step as f32 / 100.0, true).small, 0.0);
+        }
+
+        assert_eq!(label_blend(0.0, true).large, 0.0);
+        assert_eq!(label_blend(1.0, true).large, 1.0);
+    }
+}
