@@ -28,7 +28,6 @@ impl Action {
         Self::Redo,
     ];
 
-
     pub fn label(self) -> Cow<'static, str> {
         use crate::i18n;
 
