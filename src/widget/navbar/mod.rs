@@ -121,11 +121,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn label_font_maybe(mut self, font: Option<Font>) -> Self {
-        self.label_font = font;
-        self
-    }
+    crate::macros::maybe_assign!(label_font_maybe, label_font, Option<Font>);
 
     #[must_use]
     pub fn motion_scheme(mut self, scheme: motion::Scheme) -> Self {
@@ -133,11 +129,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn motion_scheme_maybe(mut self, scheme: Option<motion::Scheme>) -> Self {
-        self.motion_scheme = scheme;
-        self
-    }
+    crate::macros::maybe_assign!(motion_scheme_maybe, motion_scheme, Option<motion::Scheme>);
 
     #[must_use]
     pub fn effects_spring(mut self, spring: Spring) -> Self {
@@ -145,11 +137,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn effects_spring_maybe(mut self, spring: Option<Spring>) -> Self {
-        self.effects_spring = spring;
-        self
-    }
+    crate::macros::maybe_assign!(effects_spring_maybe, effects_spring, Option<Spring>);
 
     #[must_use]
     pub fn spatial_spring(mut self, spring: Spring) -> Self {
@@ -157,11 +145,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn spatial_spring_maybe(mut self, spring: Option<Spring>) -> Self {
-        self.spatial_spring = spring;
-        self
-    }
+    crate::macros::maybe_assign!(spatial_spring_maybe, spatial_spring, Option<Spring>);
 
     fn get_items(&self, mode: item::Mode) -> Vec<item::Item<'a, Message, Theme, Renderer>> {
         self.items
@@ -190,29 +174,15 @@ where
         renderer: &Renderer,
         limits: &iced::advanced::layout::Limits,
     ) -> Node {
-        let mut item_widgets = std::mem::take(&mut self.item_widgets);
-
         let cell_width = container_bounds.width / self.items.len() as f32;
-        let item_nodes = item_widgets
-            .iter_mut()
-            .enumerate()
-            .map(|(index, item)| {
-                let item = (item as &mut dyn Widget<Message, Theme, Renderer>).layout(
-                    &mut tree.children[index],
-                    renderer,
-                    limits,
-                );
 
-                let item_bounds = item.size();
-                item.move_to(Point::new(
-                    cell_width * index as f32 + (cell_width - item_bounds.width) / 2.0,
-                    (container_bounds.height - item_bounds.height) / 2.0,
-                ))
-            })
-            .collect();
-        self.item_widgets = item_widgets;
-
-        Node::with_children(container_bounds, item_nodes)
+        self.layout_items(
+            container_bounds,
+            tree,
+            renderer,
+            limits,
+            move |index, item_width| cell_width * index as f32 + (cell_width - item_width) / 2.0,
+        )
     }
 
     fn large_layout(
@@ -223,12 +193,27 @@ where
         renderer: &Renderer,
         limits: &iced::advanced::layout::Limits,
     ) -> Node {
-        let mut item_widgets = std::mem::take(&mut self.item_widgets);
-
         let spacing = constants::ITEM_LARGE_SPACING;
-        let total_width =
-            item_width * item_widgets.len() as f32 + spacing * (item_widgets.len() - 1) as f32;
+        let total_width = item_width * self.item_widgets.len() as f32
+            + spacing * self.item_widgets.len().saturating_sub(1) as f32;
         let offset = (container_bounds.width - total_width) / 2.0;
+
+        self.layout_items(container_bounds, tree, renderer, limits, move |index, _| {
+            offset + (item_width + spacing) * index as f32
+        })
+    }
+
+    /// Lays out every item, positioning it horizontally with `x_of`
+    /// (`index`, `item_width`) and centering it vertically.
+    fn layout_items(
+        &mut self,
+        container_bounds: Size,
+        tree: &mut iced::advanced::widget::Tree,
+        renderer: &Renderer,
+        limits: &iced::advanced::layout::Limits,
+        x_of: impl Fn(usize, f32) -> f32,
+    ) -> Node {
+        let mut item_widgets = std::mem::take(&mut self.item_widgets);
 
         let item_nodes = item_widgets
             .iter_mut()
@@ -242,7 +227,7 @@ where
 
                 let item_bounds = item.size();
                 item.move_to(Point::new(
-                    offset + (item_width + spacing) * index as f32,
+                    x_of(index, item_bounds.width),
                     (container_bounds.height - item_bounds.height) / 2.0,
                 ))
             })

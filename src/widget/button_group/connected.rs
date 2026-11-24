@@ -173,11 +173,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn label_font_maybe(mut self, font: Option<Font>) -> Self {
-        self.label_font = font;
-        self
-    }
+    crate::macros::maybe_assign!(label_font_maybe, label_font, Option<Font>);
 
     #[must_use]
     pub fn motion_scheme(mut self, scheme: motion::Scheme) -> Self {
@@ -185,11 +181,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn motion_scheme_maybe(mut self, scheme: Option<motion::Scheme>) -> Self {
-        self.motion_scheme = scheme;
-        self
-    }
+    crate::macros::maybe_assign!(motion_scheme_maybe, motion_scheme, Option<motion::Scheme>);
 
     #[must_use]
     pub fn style_spring(mut self, spring: Spring) -> Self {
@@ -197,11 +189,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn style_spring_maybe(mut self, spring: Option<Spring>) -> Self {
-        self.style_spring = spring;
-        self
-    }
+    crate::macros::maybe_assign!(style_spring_maybe, style_spring, Option<Spring>);
 
     #[must_use]
     pub fn corner_radius_spring(mut self, spring: Spring) -> Self {
@@ -209,11 +197,11 @@ where
         self
     }
 
-    #[must_use]
-    pub fn corner_radius_spring_maybe(mut self, spring: Option<Spring>) -> Self {
-        self.corner_radius_spring = spring;
-        self
-    }
+    crate::macros::maybe_assign!(
+        corner_radius_spring_maybe,
+        corner_radius_spring,
+        Option<Spring>
+    );
 
     #[must_use]
     pub fn button_expansion_spring(mut self, spring: Spring) -> Self {
@@ -221,11 +209,11 @@ where
         self
     }
 
-    #[must_use]
-    pub fn button_expansion_spring_maybe(mut self, spring: Option<Spring>) -> Self {
-        self.button_expansion_spring = spring;
-        self
-    }
+    crate::macros::maybe_assign!(
+        button_expansion_spring_maybe,
+        button_expansion_spring,
+        Option<Spring>
+    );
 
     /// Sets the expansion button ratio of the group.
     ///

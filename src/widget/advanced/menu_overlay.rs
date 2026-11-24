@@ -471,17 +471,11 @@ where
     }
 }
 
-impl<'a, Message, Theme, Renderer> From<MenuOverlay<'a, Message, Theme, Renderer>>
-    for Element<'a, Message, Theme, Renderer>
-where
-    Message: 'a + Clone,
-    Theme: 'a,
-    Renderer: 'a + iced::advanced::Renderer,
-{
-    fn from(value: MenuOverlay<'a, Message, Theme, Renderer>) -> Self {
-        Element::new(value)
-    }
-}
+crate::macros::impl_element_from!(
+    ['a, Message, Theme, Renderer]
+    MenuOverlay<'a, Message, Theme, Renderer> => Element<'a, Message, Theme, Renderer>
+    where Message: 'a + Clone, Theme: 'a, Renderer: 'a + iced::advanced::Renderer,
+);
 
 struct Overlay<'a, 'b, Message, Theme, Renderer> {
     surface: &'b mut Element<'a, Message, Theme, Renderer>,

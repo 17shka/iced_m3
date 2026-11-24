@@ -57,6 +57,13 @@ impl<P: text::Paragraph> State<P> {
         }
     }
 
+    fn position_spring_at_rest(&self, thumb: Thumb) -> bool {
+        match thumb {
+            Thumb::Lower => self.lower_position_spring.is_at_rest(),
+            Thumb::Upper => self.upper_position_spring.is_at_rest(),
+        }
+    }
+
     fn width_spring(&self, thumb: Thumb) -> f32 {
         match thumb {
             Thumb::Lower => self.lower_width_spring.value(),
@@ -657,9 +664,17 @@ where
         let cursor_over_active_at_entry = cursor.is_over(bounds)
             && self.enabled_of(active_at_entry)
             && cursor.is_over(active_circle_at_entry);
+
+        let label_following_at_entry = label_follows_handle(
+            state.position_spring_at_rest(active_at_entry),
+            state.common.label_scale_spring.to > 0.5,
+        );
         let label_visible_at_entry = !matches!(self.value_indicator, ValueIndicator::None)
             && enabled
-            && (state.drag.is_some() || cursor_over_active_at_entry || state.common.keyboard_focus);
+            && (state.drag.is_some()
+                || cursor_over_active_at_entry
+                || state.common.keyboard_focus
+                || label_following_at_entry);
 
         if state.drag.is_none() && cursor.is_over(bounds) {
             let lower_hit = self.enabled_of(Thumb::Lower) && cursor.is_over(lower_circle);
@@ -922,9 +937,16 @@ where
         let cursor_over_active = cursor.is_over(bounds)
             && self.enabled_of(state.active)
             && cursor.is_over(active_circle);
+        let label_following = label_follows_handle(
+            state.position_spring_at_rest(state.active),
+            state.common.label_scale_spring.to > 0.5,
+        );
         let label_visible = !matches!(self.value_indicator, ValueIndicator::None)
             && enabled
-            && (state.drag.is_some() || cursor_over_active || state.common.keyboard_focus);
+            && (state.drag.is_some()
+                || cursor_over_active
+                || state.common.keyboard_focus
+                || label_following);
         state
             .common
             .label_scale_spring
@@ -1161,11 +1183,7 @@ where
             None
         };
 
-        let active_factor = if state.drag.is_some() {
-            state.position_spring(state.active)
-        } else {
-            value_factor(self.value_of(state.active), &self.range)
-        };
+        let active_factor = state.position_spring(state.active);
         let active_handle = handle_rect(
             self.axis,
             bounds,
@@ -1199,18 +1217,15 @@ where
     }
 }
 
-impl<'a, T, Message, Theme, Renderer> From<RangeSlider<'a, T, Message>>
-    for Element<'a, Message, Theme, Renderer>
-where
-    T: Copy + Display + Into<f64> + num_traits::FromPrimitive + PartialOrd + 'a,
-    Message: Clone + 'a,
-    Renderer: iced::advanced::text::Renderer
-        + iced::advanced::svg::Renderer
-        + iced_widget::renderer::geometry::Renderer
-        + 'a,
-    Renderer::Font: From<iced::Font>,
-{
-    fn from(slider: RangeSlider<'a, T, Message>) -> Element<'a, Message, Theme, Renderer> {
-        Element::new(slider)
-    }
-}
+crate::macros::impl_element_from!(
+    ['a, T, Message, Theme, Renderer]
+    RangeSlider<'a, T, Message> => Element<'a, Message, Theme, Renderer>
+    where
+        T: Copy + Display + Into<f64> + num_traits::FromPrimitive + PartialOrd + 'a,
+        Message: Clone + 'a,
+        Renderer: iced::advanced::text::Renderer
+            + iced::advanced::svg::Renderer
+            + iced_widget::renderer::geometry::Renderer
+            + 'a,
+        Renderer::Font: From<iced::Font>,
+);

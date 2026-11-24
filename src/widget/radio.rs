@@ -10,7 +10,7 @@ use iced::{
     advanced::{
         Widget,
         layout::{self, Node},
-        mouse, overlay,
+        mouse,
         renderer::Quad,
     },
 };
@@ -23,8 +23,12 @@ use crate::{
     style::{StateLayer, crossfade_color},
     theme::ColorScheme,
     widget::{
-        internal::{geometry::centered_square, interaction, motion::sync_style_spring},
-        ripple::{Ripple, StateLayerOverlay},
+        internal::{
+            geometry::centered_square,
+            interaction,
+            motion::{sync_spring_model, sync_style_spring},
+        },
+        ripple::{Ripple, state_layer_overlay},
     },
 };
 
@@ -35,7 +39,7 @@ const OUTLINE_WIDTH: f32 = 2.0;
 const DOT_SIZE: f32 = 10.0;
 
 const STATE_LAYER_SIZE: f32 = 40.0;
-const DISABLED_OPACITY: f32 = 0.38;
+const DISABLED_OPACITY: f32 = crate::style::DISABLED_STATE_LAYER_OPACITY;
 
 /// Springs used by the radio when no explicit one is provided.
 ///
@@ -172,10 +176,7 @@ where
         self
     }
 
-    pub fn on_select_maybe(mut self, on_select: Option<Message>) -> Self {
-        self.on_select = on_select;
-        self
-    }
+    crate::macros::maybe_assign!(on_select_maybe, on_select, Option<Message>);
 
     pub fn motion_scheme(mut self, scheme: motion::Scheme) -> Self {
         self.effects_spring = Some(motion::default_effects(scheme));
@@ -202,16 +203,6 @@ struct State {
     last_effects_spring: Spring,
     last_spatial_spring: Spring,
     last_style: Style,
-}
-
-impl State {
-    fn set_spatial_spring(&mut self, spatial: Spring) {
-        self.fill.spring.model = spatial;
-    }
-
-    fn set_effects_spring(&mut self, effects: Spring) {
-        self.style_spring.spring.model = effects;
-    }
 }
 
 impl<Message, Theme, Renderer> Widget<Message, Theme, Renderer> for Radio<Message>
@@ -350,16 +341,16 @@ where
             .ripple
             .handle_in(event, bounds, layer_bounds, cursor, enabled, shell);
 
-        if let Some(effects_spring) = self.effects_spring
-            && effects_spring != state.last_effects_spring
-        {
-            state.set_effects_spring(effects_spring);
-        }
-        if let Some(spatial_spring) = self.spatial_spring
-            && spatial_spring != state.last_spatial_spring
-        {
-            state.set_spatial_spring(spatial_spring);
-        }
+        sync_spring_model(
+            &mut state.last_effects_spring,
+            self.effects_spring,
+            &mut [&mut state.style_spring.spring],
+        );
+        sync_spring_model(
+            &mut state.last_spatial_spring,
+            self.spatial_spring,
+            &mut [&mut state.fill.spring],
+        );
 
         let target_style = *self.style.state(self.selected, enabled);
 
@@ -383,24 +374,14 @@ where
         state.fill.step(now);
         state.style_spring.step(now);
 
-        match event {
-            iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
-                if is_over && enabled =>
-            {
-                shell.capture_event();
-                state.is_pressed = true;
-            }
-            iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
-                if state.is_pressed =>
-            {
-                shell.capture_event();
-                state.is_pressed = false;
-                if is_over && let Some(on_select) = self.on_select.clone() {
-                    shell.publish(on_select);
-                }
-            }
-            _ => {}
-        }
+        interaction::toggle_press(
+            event,
+            &mut state.is_pressed,
+            is_over,
+            enabled,
+            self.on_select.as_ref(),
+            shell,
+        );
     }
 
     fn overlay<'b>(
@@ -414,34 +395,19 @@ where
         let state = tree.state.downcast_ref::<State>();
         let bounds = layout.bounds();
         let enabled = self.on_select.is_some();
-        let layer_bounds = Rectangle {
-            x: bounds.x + translation.x + (TOUCH_TARGET_SIZE - STATE_LAYER_SIZE) / 2.0,
-            y: bounds.y + translation.y + (TOUCH_TARGET_SIZE - STATE_LAYER_SIZE) / 2.0,
-            width: STATE_LAYER_SIZE,
-            height: STATE_LAYER_SIZE,
-        };
 
-        if !(enabled && state.ripple.is_visible(layer_bounds.size(), enabled)) {
-            return None;
-        }
-
-        let overlay = StateLayerOverlay {
-            ripple: state.ripple,
-            layer: *self.style.state_layer(self.selected),
-            bounds: layer_bounds,
-            clip: Rectangle::default(),
-        }
-        .clipped(viewport)?;
-
-        Some(overlay::Element::new(Box::new(overlay)))
+        state_layer_overlay(
+            state.ripple,
+            *self.style.state_layer(self.selected),
+            centered_square(bounds, STATE_LAYER_SIZE),
+            translation,
+            viewport,
+            enabled,
+        )
     }
 }
 
-impl<'a, Message> From<Radio<Message>> for Element<'a, Message>
-where
-    Message: 'a + Clone,
-{
-    fn from(value: Radio<Message>) -> Self {
-        Element::new(value)
-    }
-}
+crate::macros::impl_element_from!(
+    ['a, Message] Radio<Message> => Element<'a, Message>
+    where Message: 'a + Clone,
+);

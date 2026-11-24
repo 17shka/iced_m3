@@ -258,14 +258,11 @@ where
     }
 }
 
-impl<'a, Message, Theme, Renderer> From<GroupElement<'a, Message, Theme, Renderer>>
-    for Element<'a, Message, Theme, Renderer>
-where
-    Message: 'a + Clone,
-    Theme: 'a,
-    Renderer: 'a + iced::advanced::text::Renderer<Font = iced::Font>,
-{
-    fn from(value: GroupElement<'a, Message, Theme, Renderer>) -> Self {
-        Element::new(value)
-    }
-}
+crate::macros::impl_element_from!(
+    ['a, Message, Theme, Renderer]
+    GroupElement<'a, Message, Theme, Renderer> => Element<'a, Message, Theme, Renderer>
+    where
+        Message: 'a + Clone,
+        Theme: 'a,
+        Renderer: 'a + iced::advanced::text::Renderer<Font = iced::Font>,
+);

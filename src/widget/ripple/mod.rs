@@ -32,7 +32,7 @@ mod update;
 mod view;
 
 pub use binding::Ripple;
-pub(crate) use overlay::{StateLayerOverlay, visible_clip};
+pub(crate) use overlay::{state_layer_overlay, visible_clip};
 
 #[cfg(test)]
 mod tests;

@@ -1,28 +1,25 @@
 use common::section_header;
 use iced::{
     Alignment, Element,
-    widget::{column, row, text},
+    widget::{column, row},
 };
-use iced_m3::theme::{Accent, ColorScheme, Theme};
+use iced_m3::theme::{Accent, Theme};
 use iced_m3::widget::{button, hybrid_icon::Icon, tooltip};
 
 #[derive(Clone)]
 pub enum Message {
     ToggleSelected,
-    ToggleCornerStyle,
     Noop,
 }
 
 pub struct Page {
     button_selected: bool,
-    corner_style: button::CornerStyle,
 }
 
 impl Default for Page {
     fn default() -> Self {
         Self {
             button_selected: false,
-            corner_style: button::CornerStyle::Rounded,
         }
     }
 }
@@ -31,12 +28,6 @@ impl Page {
     pub fn update(&mut self, message: Message) {
         match message {
             Message::ToggleSelected => self.button_selected = !self.button_selected,
-            Message::ToggleCornerStyle => {
-                self.corner_style = match self.corner_style {
-                    button::CornerStyle::Rounded => button::CornerStyle::Square,
-                    button::CornerStyle::Square => button::CornerStyle::Rounded,
-                };
-            }
             Message::Noop => {}
         }
     }
@@ -211,13 +202,7 @@ impl Page {
                     corner_radius: button::CornerRadius::default()
                         .style(button::CornerStyle::Square),
                     ..button::Size::default()
-                }),
-                iced_m3::widget::button(
-                    button::Style::elevated(theme, Accent::default()),
-                    button::Content::Label("Toggle style".into()),
-                )
-                .on_press(Message::ToggleCornerStyle),
-                text(format!("{:?}", self.corner_style)).color(theme.on_surface_variant()),
+                })
             ]
             .spacing(8)
             .align_y(Alignment::Center),

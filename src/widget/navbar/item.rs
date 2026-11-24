@@ -29,8 +29,8 @@ pub use crate::widget::internal::navigation_common::{Colors, State};
 use crate::{
     animation::motion::{self, Spring, default_effects, fast_effects},
     widget::internal::navigation_common::{
-        build_badge, draw_icon, draw_indicator, draw_label, handle_press, icon_paragraph,
-        paragraph, update_springs,
+        badge_children, build_badge, diff_badge, draw_icon, draw_indicator, draw_label,
+        handle_press, icon_paragraph, paragraph, update_springs,
     },
 };
 
@@ -108,17 +108,13 @@ where
         self
     }
 
-    #[must_use]
-    pub fn active_transition_spring_maybe(mut self, spring: Option<Spring>) -> Self {
-        self.active_transition_spring = spring;
-        self
-    }
+    crate::macros::maybe_assign!(
+        active_transition_spring_maybe,
+        active_transition_spring,
+        Option<Spring>
+    );
 
-    #[must_use]
-    pub fn color_spring_maybe(mut self, spring: Option<Spring>) -> Self {
-        self.color_spring = spring;
-        self
-    }
+    crate::macros::maybe_assign!(color_spring_maybe, color_spring, Option<Spring>);
 
     #[must_use]
     pub fn mode(mut self, mode: Mode) -> Self {
@@ -180,19 +176,11 @@ where
     }
 
     fn children(&self) -> Vec<Tree> {
-        match &self.badge {
-            Some(badge) => vec![Tree::new(badge.as_widget())],
-            None => Vec::new(),
-        }
+        badge_children(&self.badge)
     }
 
     fn diff(&self, tree: &mut Tree) {
-        let children = match &self.badge {
-            Some(badge) => vec![badge.as_widget()],
-            None => Vec::new(),
-        };
-
-        tree.diff_children(&children);
+        diff_badge(tree, &self.badge);
     }
 
     fn layout(
@@ -201,11 +189,7 @@ where
         renderer: &Renderer,
         limits: &iced::advanced::layout::Limits,
     ) -> iced::advanced::layout::Node {
-        let icon = match self.active {
-            true => &self.content.icon_active,
-            false => &self.content.icon_inactive,
-        };
-        self.icon_paragraph = icon_paragraph(renderer, icon, ICON_SIZE);
+        self.icon_paragraph = icon_paragraph(renderer, self.content.icon(self.active), ICON_SIZE);
 
         let icon_bounds = Size::new(ICON_SIZE, ICON_SIZE);
         let icon_node = Node::new(icon_bounds);
@@ -331,10 +315,7 @@ where
         draw_icon(
             renderer,
             self.icon_paragraph.as_ref(),
-            match self.active {
-                true => &self.content.icon_active,
-                false => &self.content.icon_inactive,
-            },
+            self.content.icon(self.active),
             icon_bounds,
             colors.icon,
         );

@@ -1,6 +1,9 @@
 use iced::time::Instant;
 
-use crate::animation::{Interpolable, motion::SpringValue};
+use crate::animation::{
+    Interpolable,
+    motion::{SimulatedSpring, Spring, SpringValue},
+};
 
 /// Keeps a widget's style spring in sync with its current style.
 ///
@@ -31,5 +34,24 @@ where
     } else {
         style_spring.set_target(target, now);
         false
+    }
+}
+
+pub(crate) fn sync_spring_model(
+    last: &mut Spring,
+    target: Option<Spring>,
+    springs: &mut [&mut SimulatedSpring],
+) {
+    let Some(target) = target else {
+        return;
+    };
+
+    if *last == target {
+        return;
+    }
+
+    *last = target;
+    for spring in springs {
+        spring.model = target;
     }
 }

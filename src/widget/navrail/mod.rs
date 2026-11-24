@@ -246,13 +246,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn mode_maybe(self, maybe_mode: Option<Mode>) -> Self {
-        match maybe_mode {
-            Some(mode) => self.mode(mode),
-            None => self,
-        }
-    }
+    crate::macros::maybe_delegate!(mode_maybe, mode, Option<Mode>);
 
     #[must_use]
     pub fn scrollbar_color(mut self, color: Color) -> Self {
@@ -260,13 +254,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn scrollbar_color_maybe(mut self, maybe_color: Option<Color>) -> Self {
-        if let Some(color) = maybe_color {
-            self.scrollbar_color = Some(color);
-        }
-        self
-    }
+    crate::macros::maybe_set_some!(scrollbar_color_maybe, scrollbar_color, Option<Color>);
 
     #[must_use]
     pub fn fab(mut self, fab: Fab<'a, Message>) -> Self {
@@ -282,11 +270,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn fab_maybe(mut self, maybe_fab: Option<Fab<'a, Message>>) -> Self {
-        self.fab = maybe_fab;
-        self
-    }
+    crate::macros::maybe_assign!(fab_maybe, fab, Option<Fab<'a, Message>>);
 
     /// Shows or hides the FAB immediately while keeping it configured on the rail.
     #[must_use]
@@ -323,11 +307,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn label_font_maybe(mut self, maybe_font: Option<iced::Font>) -> Self {
-        self.label_font = maybe_font;
-        self
-    }
+    crate::macros::maybe_assign!(label_font_maybe, label_font, Option<iced::Font>);
 
     #[must_use]
     pub fn item_alignment(mut self, alignment: ItemAlignment) -> Self {
@@ -335,13 +315,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn item_alignment_maybe(self, maybe_alignment: Option<ItemAlignment>) -> Self {
-        match maybe_alignment {
-            Some(alignment) => self.item_alignment(alignment),
-            None => self,
-        }
-    }
+    crate::macros::maybe_delegate!(item_alignment_maybe, item_alignment, Option<ItemAlignment>);
 
     #[must_use]
     pub fn container_vertical_padding(mut self, padding: f32) -> Self {
@@ -349,11 +323,11 @@ where
         self
     }
 
-    #[must_use]
-    pub fn container_vertical_padding_maybe(mut self, maybe_padding: Option<f32>) -> Self {
-        self.container_vertical_padding = maybe_padding;
-        self
-    }
+    crate::macros::maybe_assign!(
+        container_vertical_padding_maybe,
+        container_vertical_padding,
+        Option<f32>
+    );
 
     #[must_use]
     pub fn motion_scheme(mut self, scheme: motion::Scheme) -> Self {
@@ -361,11 +335,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn motion_scheme_maybe(mut self, scheme: Option<motion::Scheme>) -> Self {
-        self.motion_scheme = scheme;
-        self
-    }
+    crate::macros::maybe_assign!(motion_scheme_maybe, motion_scheme, Option<motion::Scheme>);
 
     #[must_use]
     pub fn item_active_transition_spring(mut self, spring: Spring) -> Self {
@@ -373,11 +343,11 @@ where
         self
     }
 
-    #[must_use]
-    pub fn item_active_transition_spring_maybe(mut self, spring: Option<Spring>) -> Self {
-        self.item_active_transition_spring = spring;
-        self
-    }
+    crate::macros::maybe_assign!(
+        item_active_transition_spring_maybe,
+        item_active_transition_spring,
+        Option<Spring>
+    );
 
     #[must_use]
     pub fn item_color_spring(mut self, spring: Spring) -> Self {
@@ -385,11 +355,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn item_color_spring_maybe(mut self, spring: Option<Spring>) -> Self {
-        self.item_color_spring = spring;
-        self
-    }
+    crate::macros::maybe_assign!(item_color_spring_maybe, item_color_spring, Option<Spring>);
 
     #[must_use]
     pub fn expand_spring(mut self, spring: Spring) -> Self {
@@ -397,11 +363,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn expand_spring_maybe(mut self, spring: Option<Spring>) -> Self {
-        self.expand_spring = spring;
-        self
-    }
+    crate::macros::maybe_assign!(expand_spring_maybe, expand_spring, Option<Spring>);
 
     fn resolve_expand_spring(&self) -> Option<Spring> {
         match (self.expand_spring, self.motion_scheme) {

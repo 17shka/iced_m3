@@ -4,6 +4,8 @@
 #[cfg(feature = "rust-i18n")]
 rust_i18n::i18n!("resources/locales", fallback = "en");
 
+mod macros;
+
 pub mod animation;
 pub mod i18n;
 pub mod spacing;

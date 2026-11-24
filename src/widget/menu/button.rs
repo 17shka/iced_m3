@@ -539,20 +539,17 @@ where
     }
 }
 
-impl<'a, Message, Theme, Renderer> From<ButtonWidget<'a, Message, Theme, Renderer>>
-    for Element<'a, Message, Theme, Renderer>
-where
-    Message: 'a + Clone,
-    Theme: 'a,
-    Renderer: 'a
-        + iced::advanced::text::Renderer<Font = iced::Font>
-        + iced::advanced::svg::Renderer
-        + iced_widget::renderer::geometry::Renderer,
-{
-    fn from(value: ButtonWidget<'a, Message, Theme, Renderer>) -> Self {
-        Element::new(value)
-    }
-}
+crate::macros::impl_element_from!(
+    ['a, Message, Theme, Renderer]
+    ButtonWidget<'a, Message, Theme, Renderer> => Element<'a, Message, Theme, Renderer>
+    where
+        Message: 'a + Clone,
+        Theme: 'a,
+        Renderer: 'a
+            + iced::advanced::text::Renderer<Font = iced::Font>
+            + iced::advanced::svg::Renderer
+            + iced_widget::renderer::geometry::Renderer,
+);
 
 struct Overlay<'a, 'b, Message, Theme, Renderer>
 where

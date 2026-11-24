@@ -300,12 +300,7 @@ where
         self
     }
 
-    /// Sets the font of the label, if `Some`.
-    #[must_use]
-    pub fn label_font_maybe(mut self, font: Option<Renderer::Font>) -> Self {
-        self.label_font = font;
-        self
-    }
+    crate::macros::maybe_assign!(label_font_maybe, label_font, Option<Renderer::Font>);
 
     /// Sets the side the tooltip is placed on.
     #[must_use]
@@ -864,17 +859,11 @@ fn fits(point: Point, size: Size, viewport: Size, margin: f32) -> bool {
         && point.y + size.height <= viewport.height - margin
 }
 
-impl<'a, Message, Theme, Renderer> From<Tooltip<'a, Message, Theme, Renderer>>
-    for Element<'a, Message, Theme, Renderer>
-where
-    Message: 'a,
-    Theme: 'a,
-    Renderer: 'a + text::Renderer,
-{
-    fn from(tooltip: Tooltip<'a, Message, Theme, Renderer>) -> Self {
-        Element::new(tooltip)
-    }
-}
+crate::macros::impl_element_from!(
+    ['a, Message, Theme, Renderer]
+    Tooltip<'a, Message, Theme, Renderer> => Element<'a, Message, Theme, Renderer>
+    where Message: 'a, Theme: 'a, Renderer: 'a + text::Renderer,
+);
 
 #[cfg(test)]
 mod tests {

@@ -5,7 +5,7 @@ use iced::{
     advanced::{
         Widget,
         layout::{self, Node},
-        mouse, overlay,
+        mouse,
         renderer::Quad,
     },
 };
@@ -20,7 +20,8 @@ use crate::{
     theme::ColorScheme,
     widget::{
         common_icons,
-        ripple::{Ripple, StateLayerOverlay},
+        internal::motion::{sync_spring_model, sync_style_spring},
+        ripple::{Ripple, state_layer_overlay},
     },
 };
 
@@ -40,10 +41,10 @@ const STATE_LAYER_SIZE: f32 = 40.0;
 const ICON_SIZE: f32 = 16.0;
 
 const HANDLE_DISABLED_SELECTED_OPACITY: f32 = 1.0;
-const HANDLE_DISABLED_UNSELECTED_OPACITY: f32 = 0.38;
-const ICON_DISABLED_OPACITY: f32 = 0.38;
-const TRACK_DISABLED_OPACITY: f32 = 0.12;
-const OUTLINE_DISABLED_OPACITY: f32 = 0.38;
+const HANDLE_DISABLED_UNSELECTED_OPACITY: f32 = crate::style::DISABLED_STATE_LAYER_OPACITY;
+const ICON_DISABLED_OPACITY: f32 = crate::style::DISABLED_STATE_LAYER_OPACITY;
+const TRACK_DISABLED_OPACITY: f32 = crate::style::PRESSED_STATE_LAYER_OPACITY;
+const OUTLINE_DISABLED_OPACITY: f32 = crate::style::DISABLED_STATE_LAYER_OPACITY;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum IconMode {
@@ -181,11 +182,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn on_toggle_maybe(mut self, on_toggle: Option<Message>) -> Self {
-        self.on_toggle = on_toggle;
-        self
-    }
+    crate::macros::maybe_assign!(on_toggle_maybe, on_toggle, Option<Message>);
 
     #[must_use]
     pub fn icon_mode(mut self, icon_mode: IconMode) -> Self {
@@ -193,13 +190,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn icon_mode_maybe(self, icon_mode: Option<IconMode>) -> Self {
-        match icon_mode {
-            Some(mode) => self.icon_mode(mode),
-            None => self,
-        }
-    }
+    crate::macros::maybe_delegate!(icon_mode_maybe, icon_mode, Option<IconMode>);
 
     #[must_use]
     pub fn motion_scheme(mut self, scheme: motion::Scheme) -> Self {
@@ -214,11 +205,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn effects_spring_maybe(mut self, spring: Option<Spring>) -> Self {
-        self.effects_spring = spring;
-        self
-    }
+    crate::macros::maybe_assign!(effects_spring_maybe, effects_spring, Option<Spring>);
 
     #[must_use]
     pub fn spatial_spring(mut self, spring: Spring) -> Self {
@@ -226,11 +213,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn spatial_spring_maybe(mut self, spring: Option<Spring>) -> Self {
-        self.spatial_spring = spring;
-        self
-    }
+    crate::macros::maybe_assign!(spatial_spring_maybe, spatial_spring, Option<Spring>);
 
     fn icon_rotation_for(&self, selected: bool) -> Radians {
         if selected {
@@ -267,19 +250,6 @@ struct State {
     handle_position_spring: SpringValue<f32>,
     handle_size_spring: SpringValue<f32>,
     drag_offset: f32,
-}
-
-impl State {
-    fn set_spatial_spring(&mut self, spatial: Spring) {
-        self.icon_rotation_spring.spring.model = spatial;
-        self.handle_position_spring.spring.model = spatial;
-        self.handle_size_spring.spring.model = spatial;
-    }
-
-    fn set_effects_spring(&mut self, effects: Spring) {
-        self.icon_opacity_spring.spring.model = effects;
-        self.style_spring.spring.model = effects;
-    }
 }
 
 impl<Message, Theme, Renderer> Widget<Message, Theme, Renderer> for Switch<Message>
@@ -486,16 +456,23 @@ where
             shell,
         );
 
-        if let Some(effects_spring) = self.effects_spring
-            && effects_spring != state.last_effects_spring
-        {
-            state.set_effects_spring(effects_spring);
-        }
-        if let Some(spatial_spring) = self.spatial_spring
-            && spatial_spring != state.last_spatial_spring
-        {
-            state.set_spatial_spring(spatial_spring);
-        }
+        sync_spring_model(
+            &mut state.last_effects_spring,
+            self.effects_spring,
+            &mut [
+                &mut state.icon_opacity_spring.spring,
+                &mut state.style_spring.spring,
+            ],
+        );
+        sync_spring_model(
+            &mut state.last_spatial_spring,
+            self.spatial_spring,
+            &mut [
+                &mut state.icon_rotation_spring.spring,
+                &mut state.handle_position_spring.spring,
+                &mut state.handle_size_spring.spring,
+            ],
+        );
 
         let drag_progress = state.drag_position.map(|drag_position| {
             ((drag_position - HANDLE_CENTER_MIN) / (HANDLE_CENTER_MAX - HANDLE_CENTER_MIN))
@@ -513,13 +490,15 @@ where
                 .interpolate(*self.style.state(true, self.on_toggle.is_some()), progress),
             None => *self.style.state(visual_selected, self.on_toggle.is_some()),
         };
-        if !self.style_checked && self.style != state.last_style {
-            state.style_spring.reset(style, now);
-            state.last_style = self.style;
-            self.style_checked = true;
+        if sync_style_spring(
+            &mut state.style_spring,
+            &mut self.style_checked,
+            &mut state.last_style,
+            self.style,
+            style,
+            now,
+        ) {
             shell.request_redraw();
-        } else {
-            state.style_spring.set_target(style, now);
         }
 
         state
@@ -662,23 +641,14 @@ where
         );
         let enabled = self.on_toggle.is_some();
 
-        if !(enabled && state.ripple.is_visible(ripple_bounds.size(), enabled)) {
-            return None;
-        }
-
-        let overlay = StateLayerOverlay {
-            ripple: state.ripple,
-            layer: *self.style.state_layer(self.selected),
-            bounds: Rectangle {
-                x: ripple_bounds.x + translation.x,
-                y: ripple_bounds.y + translation.y,
-                ..ripple_bounds
-            },
-            clip: Rectangle::default(),
-        }
-        .clipped(viewport)?;
-
-        Some(overlay::Element::new(Box::new(overlay)))
+        state_layer_overlay(
+            state.ripple,
+            *self.style.state_layer(self.selected),
+            ripple_bounds,
+            translation,
+            viewport,
+            enabled,
+        )
     }
 }
 
@@ -708,11 +678,7 @@ fn state_layer_bounds(bounds: Rectangle, handle_size: f32, handle_center: f32) -
     }
 }
 
-impl<'a, Message> From<Switch<Message>> for Element<'a, Message>
-where
-    Message: 'a + Clone,
-{
-    fn from(value: Switch<Message>) -> Self {
-        Element::new(value)
-    }
-}
+crate::macros::impl_element_from!(
+    ['a, Message] Switch<Message> => Element<'a, Message>
+    where Message: 'a + Clone,
+);

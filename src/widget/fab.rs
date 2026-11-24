@@ -184,13 +184,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn size_maybe(self, maybe_size: Option<Size>) -> Self {
-        match maybe_size {
-            Some(size) => self.size(size),
-            None => self,
-        }
-    }
+    crate::macros::maybe_delegate!(size_maybe, size, Option<Size>);
 
     #[must_use]
     pub fn label_font(mut self, label_font: Font) -> Self {
@@ -198,11 +192,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn label_font_maybe(mut self, maybe_label_font: Option<Font>) -> Self {
-        self.label_font = maybe_label_font;
-        self
-    }
+    crate::macros::maybe_assign!(label_font_maybe, label_font, Option<Font>);
 
     #[must_use]
     pub fn corner_style(mut self, corner_style: CornerStyle) -> Self {

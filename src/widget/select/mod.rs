@@ -87,7 +87,7 @@ pub(crate) mod constants {
 
     pub const SCROLLBAR_GUTTER: f32 = scrollbar::GUTTER;
 
-    pub const STATE_LAYER_OPACITY: f32 = 0.08;
+    pub const STATE_LAYER_OPACITY: f32 = crate::style::HOVER_STATE_LAYER_OPACITY;
 }
 
 #[cfg(feature = "pub-internal-const")]
@@ -1141,15 +1141,10 @@ where
     }
 }
 
-impl<'a, T, Message> From<Select<'a, T, Message>> for Element<'a, Message>
-where
-    T: Clone + PartialEq + 'a,
-    Message: Clone + 'a,
-{
-    fn from(value: Select<'a, T, Message>) -> Self {
-        Element::new(value)
-    }
-}
+crate::macros::impl_element_from!(
+    ['a, T, Message] Select<'a, T, Message> => Element<'a, Message>
+    where T: Clone + PartialEq + 'a, Message: Clone + 'a,
+);
 
 #[derive(Debug)]
 struct State {

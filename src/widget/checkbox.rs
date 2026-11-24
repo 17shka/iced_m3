@@ -1,11 +1,11 @@
 use iced::time::Instant;
 
 use iced::{
-    Border, Color, Element, Length, Point, Rectangle, Size, Vector,
+    Border, Color, Element, Length, Point, Size, Vector,
     advanced::{
         Widget,
         layout::{self, Node},
-        mouse, overlay,
+        mouse,
         renderer::Quad,
     },
     widget::canvas,
@@ -19,8 +19,12 @@ use crate::{
     style::{StateLayer, crossfade_color},
     theme::ColorScheme,
     widget::{
-        internal::{geometry::centered_square, interaction, motion::sync_style_spring},
-        ripple::{Ripple, StateLayerOverlay},
+        internal::{
+            geometry::centered_square,
+            interaction,
+            motion::{sync_spring_model, sync_style_spring},
+        },
+        ripple::{Ripple, state_layer_overlay},
     },
 };
 
@@ -30,7 +34,7 @@ const BORDER_RADIUS: f32 = 2.0;
 const OUTLINE_WIDTH: f32 = 2.0;
 
 const STATE_LAYER_SIZE: f32 = 40.0;
-const DISABLED_OPACITY: f32 = 0.38;
+const DISABLED_OPACITY: f32 = crate::style::DISABLED_STATE_LAYER_OPACITY;
 
 const DEFAULT_EFFECTS_SPRING: Spring = Spring::new(1.0, 1600.0);
 const DEFAULT_SPATIAL_SPRING: Spring = Spring::new(0.9, 1000.0);
@@ -263,10 +267,7 @@ where
         self
     }
 
-    pub fn on_toggle_maybe(mut self, on_toggle: Option<Message>) -> Self {
-        self.on_toggle = on_toggle;
-        self
-    }
+    crate::macros::maybe_assign!(on_toggle_maybe, on_toggle, Option<Message>);
 
     pub fn motion_scheme(mut self, scheme: motion::Scheme) -> Self {
         self.effects_spring = Some(fast_effects(scheme));
@@ -294,17 +295,6 @@ struct State {
     last_effects_spring: Spring,
     last_spatial_spring: Spring,
     last_style: Style,
-}
-
-impl State {
-    fn set_spatial_spring(&mut self, spatial: Spring) {
-        self.check.spring.model = spatial;
-        self.morph.spring.model = spatial;
-    }
-
-    fn set_effects_spring(&mut self, effects: Spring) {
-        self.style_spring.spring.model = effects;
-    }
 }
 
 impl<Message, Theme, Renderer> Widget<Message, Theme, Renderer> for Checkbox<Message>
@@ -481,16 +471,16 @@ where
             .ripple
             .handle_in(event, bounds, layer_bounds, cursor, enabled, shell);
 
-        if let Some(effects_spring) = self.effects_spring
-            && effects_spring != state.last_effects_spring
-        {
-            state.set_effects_spring(effects_spring);
-        }
-        if let Some(spatial_spring) = self.spatial_spring
-            && spatial_spring != state.last_spatial_spring
-        {
-            state.set_spatial_spring(spatial_spring);
-        }
+        sync_spring_model(
+            &mut state.last_effects_spring,
+            self.effects_spring,
+            &mut [&mut state.style_spring.spring],
+        );
+        sync_spring_model(
+            &mut state.last_spatial_spring,
+            self.spatial_spring,
+            &mut [&mut state.check.spring, &mut state.morph.spring],
+        );
 
         let target_style = *self.style.state(self.value, enabled);
 
@@ -540,24 +530,14 @@ where
             state.morph.reset(0.0, now);
         }
 
-        match event {
-            iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
-                if is_over && enabled =>
-            {
-                shell.capture_event();
-                state.is_pressed = true;
-            }
-            iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
-                if state.is_pressed =>
-            {
-                shell.capture_event();
-                state.is_pressed = false;
-                if is_over && let Some(on_toggle) = self.on_toggle.clone() {
-                    shell.publish(on_toggle);
-                }
-            }
-            _ => {}
-        }
+        interaction::toggle_press(
+            event,
+            &mut state.is_pressed,
+            is_over,
+            enabled,
+            self.on_toggle.as_ref(),
+            shell,
+        );
     }
 
     fn overlay<'b>(
@@ -571,34 +551,19 @@ where
         let state = tree.state.downcast_ref::<State>();
         let bounds = layout.bounds();
         let enabled = self.on_toggle.is_some();
-        let layer_bounds = Rectangle {
-            x: bounds.x + translation.x + (TOUCH_TARGET_SIZE - STATE_LAYER_SIZE) / 2.0,
-            y: bounds.y + translation.y + (TOUCH_TARGET_SIZE - STATE_LAYER_SIZE) / 2.0,
-            width: STATE_LAYER_SIZE,
-            height: STATE_LAYER_SIZE,
-        };
 
-        if !(enabled && state.ripple.is_visible(layer_bounds.size(), enabled)) {
-            return None;
-        }
-
-        let overlay = StateLayerOverlay {
-            ripple: state.ripple,
-            layer: *self.style.state_layer(self.value.is_selected()),
-            bounds: layer_bounds,
-            clip: Rectangle::default(),
-        }
-        .clipped(viewport)?;
-
-        Some(overlay::Element::new(Box::new(overlay)))
+        state_layer_overlay(
+            state.ripple,
+            *self.style.state_layer(self.value.is_selected()),
+            centered_square(bounds, STATE_LAYER_SIZE),
+            translation,
+            viewport,
+            enabled,
+        )
     }
 }
 
-impl<'a, Message> From<Checkbox<Message>> for Element<'a, Message>
-where
-    Message: 'a + Clone,
-{
-    fn from(value: Checkbox<Message>) -> Self {
-        Element::new(value)
-    }
-}
+crate::macros::impl_element_from!(
+    ['a, Message] Checkbox<Message> => Element<'a, Message>
+    where Message: 'a + Clone,
+);

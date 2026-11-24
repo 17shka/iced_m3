@@ -321,12 +321,7 @@ where
         self
     }
 
-    /// Sets the message that should be produced when the visibility toggle
-    /// icon of the [`TextInput`] is pressed, if `Some`.
-    pub fn on_toggle_secure_maybe(mut self, on_toggle_secure: Option<Message>) -> Self {
-        self.on_toggle_secure = on_toggle_secure;
-        self
-    }
+    crate::macros::maybe_assign!(on_toggle_secure_maybe, on_toggle_secure, Option<Message>);
 
     /// Sets the message that should be produced when some text is typed into
     /// the [`TextInput`].
@@ -353,12 +348,7 @@ where
         self
     }
 
-    /// Sets the message that should be produced when the [`TextInput`] is
-    /// focused and the enter key is pressed, if `Some`.
-    pub fn on_submit_maybe(mut self, on_submit: Option<Message>) -> Self {
-        self.on_submit = on_submit;
-        self
-    }
+    crate::macros::maybe_assign!(on_submit_maybe, on_submit, Option<Message>);
 
     /// Sets the message that should be produced when some text is pasted into
     /// the [`TextInput`].
@@ -2118,19 +2108,14 @@ where
     }
 }
 
-impl<'a, Message, Theme, Renderer> From<TextInput<'a, Message, Theme, Renderer>>
-    for Element<'a, Message, Theme, Renderer>
-where
-    Message: Clone + 'a,
-    Theme: Catalog + 'a,
-    Renderer: text::Renderer + svg::Renderer + 'a,
-{
-    fn from(
-        text_input: TextInput<'a, Message, Theme, Renderer>,
-    ) -> Element<'a, Message, Theme, Renderer> {
-        Element::new(text_input)
-    }
-}
+crate::macros::impl_element_from!(
+    ['a, Message, Theme, Renderer]
+    TextInput<'a, Message, Theme, Renderer> => Element<'a, Message, Theme, Renderer>
+    where
+        Message: Clone + 'a,
+        Theme: Catalog + 'a,
+        Renderer: text::Renderer + svg::Renderer + 'a,
+);
 
 /// The content of the [`Icon`].
 #[derive(Debug, Clone)]

@@ -1,6 +1,6 @@
 use iced::{
-    Rectangle,
-    advanced::{Layout, Overlay, layout, mouse, renderer},
+    Rectangle, Vector,
+    advanced::{Layout, Overlay, layout, mouse, overlay, renderer},
     border::Radius,
 };
 use iced_widget::renderer::geometry;
@@ -20,6 +20,40 @@ impl StateLayerOverlay {
         self.clip = visible_clip(self.bounds, viewport)?;
         Some(self)
     }
+}
+
+/// Builds the clipped overlay that paints `ripple`'s state layer at `bounds`
+/// (offset by `translation`).
+///
+/// Returns `None` when the widget is disabled or nothing would be drawn.
+pub(crate) fn state_layer_overlay<'a, Message, Theme, Renderer>(
+    ripple: Ripple,
+    layer: StateLayer,
+    bounds: Rectangle,
+    translation: Vector,
+    viewport: &Rectangle,
+    enabled: bool,
+) -> Option<overlay::Element<'a, Message, Theme, Renderer>>
+where
+    Renderer: geometry::Renderer,
+{
+    if !(enabled && ripple.is_visible(bounds.size(), enabled)) {
+        return None;
+    }
+
+    let overlay = StateLayerOverlay {
+        ripple,
+        layer,
+        bounds: Rectangle {
+            x: bounds.x + translation.x,
+            y: bounds.y + translation.y,
+            ..bounds
+        },
+        clip: Rectangle::default(),
+    }
+    .clipped(viewport)?;
+
+    Some(overlay::Element::new(Box::new(overlay)))
 }
 
 pub(crate) fn visible_clip(bounds: Rectangle, viewport: &Rectangle) -> Option<Rectangle> {

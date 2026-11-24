@@ -20,12 +20,13 @@ use iced_widget::core::{
 use crate::{
     animation::{
         Interpolable,
-        motion::{self, SimulatedSpring, Spring, SpringValue, fast_effects, fast_spatial},
+        motion::{self, Spring, SpringValue, fast_effects, fast_spatial},
     },
     style::StateLayer,
     theme::ColorScheme,
     widget::{
         hybrid_icon::Icon,
+        internal::motion::sync_spring_model,
         ripple::{Ripple, visible_clip},
     },
 };
@@ -56,9 +57,9 @@ const LABEL_GAP: f32 = 8.0;
 
 const LABEL_TEXT_FADE_START: f32 = 0.85;
 
-const DISABLED_ACTIVE_OPACITY: f32 = 0.38;
-const DISABLED_INACTIVE_OPACITY: f32 = 0.12;
-const DISABLED_INDICATOR_OPACITY: f32 = 0.38;
+const DISABLED_ACTIVE_OPACITY: f32 = crate::style::DISABLED_STATE_LAYER_OPACITY;
+const DISABLED_INACTIVE_OPACITY: f32 = crate::style::PRESSED_STATE_LAYER_OPACITY;
+const DISABLED_INDICATOR_OPACITY: f32 = crate::style::DISABLED_STATE_LAYER_OPACITY;
 
 const DRAG_CHASE_DECAY: f32 = 0.008;
 
@@ -328,26 +329,6 @@ impl Interpolable for Style {
     }
 }
 
-/// Applies the configured spring model to every animated spring, if it changed.
-fn sync_spring_model(
-    last: &mut Spring,
-    target: Option<Spring>,
-    springs: &mut [&mut SimulatedSpring],
-) {
-    let Some(target) = target else {
-        return;
-    };
-
-    if *last == target {
-        return;
-    }
-
-    *last = target;
-    for spring in springs {
-        spring.model = target;
-    }
-}
-
 /// Animates the style spring, or jumps straight to the new style when it
 /// changed (e.g. on a theme switch).
 fn transition_style(
@@ -383,6 +364,10 @@ fn settle_handle_spring(spring: &mut SpringValue<f32>, target: f32, now: Instant
         spring.set_target(target, now);
         spring.spring.velocity = DRAG_RELEASE_IMPULSE;
     }
+}
+
+fn label_follows_handle(handle_at_rest: bool, label_requested: bool) -> bool {
+    !handle_at_rest && label_requested
 }
 
 fn configured_springs(effects: Option<Spring>, spatial: Option<Spring>) -> (Spring, Spring) {
@@ -894,10 +879,17 @@ where
             now,
         );
 
+        let label_following = label_follows_handle(
+            state.handle_position_spring.is_at_rest(),
+            state.common.label_scale_spring.to > 0.5,
+        );
         let cursor_over_handle = enabled && cursor.is_over(bounds) && cursor.is_over(circle);
         let label_visible = !matches!(self.value_indicator, ValueIndicator::None)
             && enabled
-            && (state.is_dragging || cursor_over_handle || state.common.keyboard_focus);
+            && (state.is_dragging
+                || cursor_over_handle
+                || state.common.keyboard_focus
+                || label_following);
         let focus_target = (state.common.keyboard_focus && enabled) as u32 as f32;
         state
             .common
@@ -1315,21 +1307,18 @@ where
     }
 }
 
-impl<'a, T, Message, Theme, Renderer> From<Slider<'a, T, Message>>
-    for Element<'a, Message, Theme, Renderer>
-where
-    T: Copy + Display + Into<f64> + num_traits::FromPrimitive + PartialOrd + 'a,
-    Message: Clone + 'a,
-    Renderer: iced::advanced::text::Renderer
-        + iced::advanced::svg::Renderer
-        + iced_widget::renderer::geometry::Renderer
-        + 'a,
-    Renderer::Font: From<iced::Font>,
-{
-    fn from(slider: Slider<'a, T, Message>) -> Element<'a, Message, Theme, Renderer> {
-        Element::new(slider)
-    }
-}
+crate::macros::impl_element_from!(
+    ['a, T, Message, Theme, Renderer]
+    Slider<'a, T, Message> => Element<'a, Message, Theme, Renderer>
+    where
+        T: Copy + Display + Into<f64> + num_traits::FromPrimitive + PartialOrd + 'a,
+        Message: Clone + 'a,
+        Renderer: iced::advanced::text::Renderer
+            + iced::advanced::svg::Renderer
+            + iced_widget::renderer::geometry::Renderer
+            + 'a,
+        Renderer::Font: From<iced::Font>,
+);
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Segment {
@@ -2440,6 +2429,14 @@ mod tests {
                 height: 18.0,
             }
         );
+    }
+
+    #[test]
+    fn label_follows_handle_only_while_the_spring_settles() {
+        assert!(label_follows_handle(false, true));
+        assert!(!label_follows_handle(false, false));
+        assert!(!label_follows_handle(true, true));
+        assert!(!label_follows_handle(true, false));
     }
 
     #[test]

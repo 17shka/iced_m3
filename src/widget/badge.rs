@@ -103,11 +103,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn label_font_maybe(mut self, font: Option<Renderer::Font>) -> Self {
-        self.label_font = font;
-        self
-    }
+    crate::macros::maybe_assign!(label_font_maybe, label_font, Option<Renderer::Font>);
 
     #[must_use]
     pub fn bounds_mode(mut self, mode: BoundsMode) -> Self {
@@ -115,13 +111,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn bounds_mode_maybe(self, mode_maybe: Option<BoundsMode>) -> Self {
-        match mode_maybe {
-            Some(mode) => self.bounds_mode(mode),
-            None => self,
-        }
-    }
+    crate::macros::maybe_delegate!(bounds_mode_maybe, bounds_mode, Option<BoundsMode>);
 }
 
 impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer>
@@ -299,14 +289,8 @@ where
     }
 }
 
-impl<'a, Message, Theme, Renderer> From<Badge<'a, Message, Theme, Renderer>>
-    for Element<'a, Message, Theme, Renderer>
-where
-    Message: 'a,
-    Theme: 'a,
-    Renderer: 'a + iced::advanced::text::Renderer,
-{
-    fn from(value: Badge<'a, Message, Theme, Renderer>) -> Self {
-        Element::new(value)
-    }
-}
+crate::macros::impl_element_from!(
+    ['a, Message, Theme, Renderer]
+    Badge<'a, Message, Theme, Renderer> => Element<'a, Message, Theme, Renderer>
+    where Message: 'a, Theme: 'a, Renderer: 'a + iced::advanced::text::Renderer,
+);

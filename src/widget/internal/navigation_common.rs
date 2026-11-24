@@ -58,6 +58,18 @@ where
     pub on_press: Message,
 }
 
+impl<'a, Message> NavigationItemContent<'a, Message>
+where
+    Message: Clone,
+{
+    pub fn icon(&self, active: bool) -> &Icon<'a> {
+        match active {
+            true => &self.icon_active,
+            false => &self.icon_inactive,
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq)]
 pub struct Colors {
     pub icon: Color,
@@ -121,6 +133,32 @@ impl State {
         state.color_spring.reset(colors, now);
         state
     }
+}
+
+pub fn badge_children<'a, Message, Theme, Renderer>(
+    badge: &Option<Element<'a, Message, Theme, Renderer>>,
+) -> Vec<iced::advanced::widget::Tree>
+where
+    Renderer: iced::advanced::Renderer,
+{
+    match badge {
+        Some(badge) => vec![iced::advanced::widget::Tree::new(badge.as_widget())],
+        None => Vec::new(),
+    }
+}
+
+pub fn diff_badge<'a, Message, Theme, Renderer>(
+    tree: &mut iced::advanced::widget::Tree,
+    badge: &Option<Element<'a, Message, Theme, Renderer>>,
+) where
+    Renderer: iced::advanced::Renderer,
+{
+    let children = match badge {
+        Some(badge) => vec![badge.as_widget()],
+        None => Vec::new(),
+    };
+
+    tree.diff_children(&children);
 }
 
 /// Builds the optional badge element shared by navigation items.

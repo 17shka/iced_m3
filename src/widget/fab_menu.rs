@@ -164,11 +164,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn size_maybe(mut self, size: Option<fab::Size>) -> Self {
-        self.size = size;
-        self
-    }
+    crate::macros::maybe_assign!(size_maybe, size, Option<fab::Size>);
 
     #[must_use]
     pub fn motion_scheme(mut self, scheme: motion::Scheme) -> Self {
@@ -183,11 +179,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn spatial_spring_maybe(mut self, spring: Option<Spring>) -> Self {
-        self.spatial_spring = spring;
-        self
-    }
+    crate::macros::maybe_assign!(spatial_spring_maybe, spatial_spring, Option<Spring>);
 
     #[must_use]
     pub fn effects_spring(mut self, spring: Spring) -> Self {
@@ -195,11 +187,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn effects_spring_maybe(mut self, spring: Option<Spring>) -> Self {
-        self.effects_spring = spring;
-        self
-    }
+    crate::macros::maybe_assign!(effects_spring_maybe, effects_spring, Option<Spring>);
 }
 
 struct State {
@@ -517,21 +505,18 @@ where
     }
 }
 
-impl<'a, Message, Theme, Renderer> From<FABMenu<'a, Message, Theme, Renderer>>
-    for Element<'a, Message, Theme, Renderer>
-where
-    Message: 'a + Clone,
-    Theme: 'a,
-    Renderer: 'a
-        + iced::advanced::text::Renderer
-        + iced::advanced::svg::Renderer
-        + iced_widget::renderer::geometry::Renderer,
-    Renderer::Font: From<iced::Font>,
-{
-    fn from(menu: FABMenu<'a, Message, Theme, Renderer>) -> Self {
-        Element::new(menu)
-    }
-}
+crate::macros::impl_element_from!(
+    ['a, Message, Theme, Renderer]
+    FABMenu<'a, Message, Theme, Renderer> => Element<'a, Message, Theme, Renderer>
+    where
+        Message: 'a + Clone,
+        Theme: 'a,
+        Renderer: 'a
+            + iced::advanced::text::Renderer
+            + iced::advanced::svg::Renderer
+            + iced_widget::renderer::geometry::Renderer,
+        Renderer::Font: From<iced::Font>,
+);
 
 struct Overlay<'a, 'b, Message, Theme, Renderer> {
     base_bounds: Rectangle,

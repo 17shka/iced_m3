@@ -678,13 +678,7 @@ impl<'a> Content<'a> {
         }
     }
 
-    #[must_use]
-    pub fn label_maybe(self, maybe_label: Option<impl text::IntoFragment<'a>>) -> Self {
-        match maybe_label {
-            Some(label) => self.label(label),
-            None => self,
-        }
-    }
+    crate::macros::maybe_delegate!(label_maybe, label, Option<impl text::IntoFragment<'a>>);
 
     #[must_use]
     pub fn icon(self, icon: Icon<'a>) -> Self {
@@ -695,13 +689,7 @@ impl<'a> Content<'a> {
         }
     }
 
-    #[must_use]
-    pub fn icon_maybe(self, maybe_icon: Option<Icon<'a>>) -> Self {
-        match maybe_icon {
-            Some(icon) => self.icon(icon),
-            None => self,
-        }
-    }
+    crate::macros::maybe_delegate!(icon_maybe, icon, Option<Icon<'a>>);
 
     #[must_use]
     fn get_icon(&self) -> Option<&Icon<'a>> {
@@ -780,11 +768,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn label_font_maybe(mut self, maybe_font: Option<iced::Font>) -> Self {
-        self.label_font = maybe_font;
-        self
-    }
+    crate::macros::maybe_assign!(label_font_maybe, label_font, Option<iced::Font>);
 
     #[must_use]
     pub fn size(mut self, size: Size) -> Self {
@@ -829,13 +813,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn motion_scheme_maybe(self, scheme: Option<motion::Scheme>) -> Self {
-        match scheme {
-            Some(scheme) => self.motion_scheme(scheme),
-            None => self,
-        }
-    }
+    crate::macros::maybe_delegate!(motion_scheme_maybe, motion_scheme, Option<motion::Scheme>);
 
     #[must_use]
     pub fn style_spring(mut self, spring: Spring) -> Self {
@@ -843,11 +821,7 @@ where
         self
     }
 
-    #[must_use]
-    pub fn style_spring_maybe(mut self, spring: Option<Spring>) -> Self {
-        self.style_spring = spring;
-        self
-    }
+    crate::macros::maybe_assign!(style_spring_maybe, style_spring, Option<Spring>);
 
     #[must_use]
     pub fn corner_radius_spring(mut self, spring: Spring) -> Self {
@@ -855,11 +829,11 @@ where
         self
     }
 
-    #[must_use]
-    pub fn corner_radius_spring_maybe(mut self, spring: Option<Spring>) -> Self {
-        self.corner_radius_spring = spring;
-        self
-    }
+    crate::macros::maybe_assign!(
+        corner_radius_spring_maybe,
+        corner_radius_spring,
+        Option<Spring>
+    );
 
     fn get_style_spring(&self) -> Spring {
         self.style_spring
@@ -1198,17 +1172,14 @@ where
     }
 }
 
-impl<'a, Message, Theme, Renderer> From<Button<'a, Message, Renderer>>
-    for Element<'a, Message, Theme, Renderer>
-where
-    Message: 'a + Clone,
-    Renderer: 'a
-        + iced::advanced::text::Renderer
-        + iced::advanced::svg::Renderer
-        + iced_widget::renderer::geometry::Renderer,
-    Renderer::Font: From<iced::Font>,
-{
-    fn from(value: Button<'a, Message, Renderer>) -> Self {
-        Element::new(value)
-    }
-}
+crate::macros::impl_element_from!(
+    ['a, Message, Theme, Renderer]
+    Button<'a, Message, Renderer> => Element<'a, Message, Theme, Renderer>
+    where
+        Message: 'a + Clone,
+        Renderer: 'a
+            + iced::advanced::text::Renderer
+            + iced::advanced::svg::Renderer
+            + iced_widget::renderer::geometry::Renderer,
+        Renderer::Font: From<iced::Font>,
+);

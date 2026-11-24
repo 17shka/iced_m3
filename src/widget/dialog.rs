@@ -149,11 +149,7 @@ impl<'a, Message> Dialog<'a, Message> {
         self
     }
 
-    #[must_use]
-    pub fn icon_maybe(mut self, maybe_icon: Option<char>) -> Self {
-        self.icon = maybe_icon;
-        self
-    }
+    crate::macros::maybe_assign!(icon_maybe, icon, Option<char>);
 
     #[must_use]
     pub fn icon_font(mut self, font: Font) -> Self {
@@ -161,11 +157,7 @@ impl<'a, Message> Dialog<'a, Message> {
         self
     }
 
-    #[must_use]
-    pub fn icon_font_maybe(mut self, font: Option<Font>) -> Self {
-        self.icon_font = font;
-        self
-    }
+    crate::macros::maybe_assign!(icon_font_maybe, icon_font, Option<Font>);
 
     #[must_use]
     pub fn title(mut self, title: impl IntoFragment<'a>) -> Self {
@@ -179,11 +171,7 @@ impl<'a, Message> Dialog<'a, Message> {
         self
     }
 
-    #[must_use]
-    pub fn title_font_maybe(mut self, font: Option<Font>) -> Self {
-        self.title_font = font;
-        self
-    }
+    crate::macros::maybe_assign!(title_font_maybe, title_font, Option<Font>);
 
     #[must_use]
     pub fn button_label_font(mut self, font: Font) -> Self {
@@ -191,11 +179,7 @@ impl<'a, Message> Dialog<'a, Message> {
         self
     }
 
-    #[must_use]
-    pub fn button_label_font_maybe(mut self, font: Option<Font>) -> Self {
-        self.button_label_font = font;
-        self
-    }
+    crate::macros::maybe_assign!(button_label_font_maybe, button_label_font, Option<Font>);
 
     #[must_use]
     pub fn width(mut self, width: f32) -> Self {
@@ -203,11 +187,7 @@ impl<'a, Message> Dialog<'a, Message> {
         self
     }
 
-    #[must_use]
-    pub fn width_maybe(mut self, maybe_width: Option<f32>) -> Self {
-        self.width = maybe_width;
-        self
-    }
+    crate::macros::maybe_assign!(width_maybe, width, Option<f32>);
 
     #[must_use]
     pub fn height(mut self, height: f32) -> Self {
@@ -215,11 +195,7 @@ impl<'a, Message> Dialog<'a, Message> {
         self
     }
 
-    #[must_use]
-    pub fn height_maybe(mut self, maybe_height: Option<f32>) -> Self {
-        self.height = maybe_height;
-        self
-    }
+    crate::macros::maybe_assign!(height_maybe, height, Option<f32>);
 
     #[must_use]
     pub fn on_press_outside(mut self, on_press: Message) -> Self {
@@ -227,11 +203,7 @@ impl<'a, Message> Dialog<'a, Message> {
         self
     }
 
-    #[must_use]
-    pub fn on_press_outside_maybe(mut self, on_press: Option<Message>) -> Self {
-        self.on_press_outside = on_press;
-        self
-    }
+    crate::macros::maybe_assign!(on_press_outside_maybe, on_press_outside, Option<Message>);
 
     /// Sets the message produced by the close button of a fullscreen dialog.
     ///
@@ -242,12 +214,7 @@ impl<'a, Message> Dialog<'a, Message> {
         self
     }
 
-    /// Sets the message produced by the close button, if `Some`.
-    #[must_use]
-    pub fn on_close_maybe(mut self, on_close: Option<Message>) -> Self {
-        self.close = on_close;
-        self
-    }
+    crate::macros::maybe_assign!(on_close_maybe, close, Option<Message>);
 
     /// Makes the dialog cover the whole window.
     ///
@@ -283,12 +250,7 @@ impl<'a, Message> Dialog<'a, Message> {
         self
     }
 
-    /// Sets the spring driving the appear and disappear animations, if any.
-    #[must_use]
-    pub fn spring_maybe(mut self, spring: Option<Spring>) -> Self {
-        self.spring = spring;
-        self
-    }
+    crate::macros::maybe_assign!(spring_maybe, spring, Option<Spring>);
 }
 
 impl<'a, Message> From<Dialog<'a, Message>> for Element<'a, Message>

@@ -50,8 +50,8 @@ use crate::{
     animation::motion::{self, Spring, default_effects, fast_effects},
     widget::{
         internal::navigation_common::{
-            build_badge, colors_for, draw_icon, draw_indicator, draw_label, handle_press,
-            icon_paragraph, paragraph, update_springs,
+            badge_children, build_badge, colors_for, diff_badge, draw_icon, draw_indicator,
+            draw_label, handle_press, icon_paragraph, paragraph, update_springs,
         },
         tooltip,
     },
@@ -219,17 +219,13 @@ where
         self
     }
 
-    #[must_use]
-    pub fn active_transition_spring_maybe(mut self, spring: Option<Spring>) -> Self {
-        self.active_transition_spring = spring;
-        self
-    }
+    crate::macros::maybe_assign!(
+        active_transition_spring_maybe,
+        active_transition_spring,
+        Option<Spring>
+    );
 
-    #[must_use]
-    pub fn color_spring_maybe(mut self, spring: Option<Spring>) -> Self {
-        self.color_spring = spring;
-        self
-    }
+    crate::macros::maybe_assign!(color_spring_maybe, color_spring, Option<Spring>);
 }
 
 impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer>
@@ -278,19 +274,11 @@ where
     }
 
     fn children(&self) -> Vec<Tree> {
-        match &self.badge {
-            Some(badge) => vec![Tree::new(badge.as_widget())],
-            None => Vec::new(),
-        }
+        badge_children(&self.badge)
     }
 
     fn diff(&self, tree: &mut Tree) {
-        let children = match &self.badge {
-            Some(badge) => vec![badge.as_widget()],
-            None => Vec::new(),
-        };
-
-        tree.diff_children(&children);
+        diff_badge(tree, &self.badge);
     }
 
     fn layout(
@@ -301,11 +289,7 @@ where
     ) -> iced::advanced::layout::Node {
         let expansion = tree.state.downcast_ref::<State>().expansion.clamp(0.0, 1.0);
 
-        let icon = match self.active {
-            true => &self.content.icon_active,
-            false => &self.content.icon_inactive,
-        };
-        self.icon_paragraph = icon_paragraph(renderer, icon, ICON_SIZE);
+        self.icon_paragraph = icon_paragraph(renderer, self.content.icon(self.active), ICON_SIZE);
 
         // A label that does not fit the rail is ellipsized; hovering the item then shows the full
         // text as a tooltip. Only the label that is actually visible for the current mode is
@@ -551,10 +535,7 @@ where
         draw_icon(
             renderer,
             self.icon_paragraph.as_ref(),
-            match self.active {
-                true => &self.content.icon_active,
-                false => &self.content.icon_inactive,
-            },
+            self.content.icon(self.active),
             icon_bounds,
             colors.icon,
         );
@@ -727,18 +708,15 @@ where
     }
 }
 
-impl<'a, Message, Theme, Renderer> From<Item<'a, Message, Theme, Renderer>>
-    for Element<'a, Message, Theme, Renderer>
-where
-    Message: 'a + Clone,
-    Theme: 'a,
-    Renderer: 'a
-        + iced::advanced::text::Renderer
-        + iced::advanced::svg::Renderer
-        + iced_widget::renderer::geometry::Renderer,
-    Renderer::Font: From<iced::Font>,
-{
-    fn from(value: Item<'a, Message, Theme, Renderer>) -> Self {
-        Element::new(value)
-    }
-}
+crate::macros::impl_element_from!(
+    ['a, Message, Theme, Renderer]
+    Item<'a, Message, Theme, Renderer> => Element<'a, Message, Theme, Renderer>
+    where
+        Message: 'a + Clone,
+        Theme: 'a,
+        Renderer: 'a
+            + iced::advanced::text::Renderer
+            + iced::advanced::svg::Renderer
+            + iced_widget::renderer::geometry::Renderer,
+        Renderer::Font: From<iced::Font>,
+);

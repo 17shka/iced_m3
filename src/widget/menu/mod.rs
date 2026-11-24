@@ -39,7 +39,7 @@ pub(crate) mod constants {
     pub const ITEM_SUPPORTING_TEXT_SIZE: Pixels = Pixels(12.0);
     pub const ITEM_SUPPORTING_TEXT_LINE_HEIGHT: Pixels = Pixels(16.0);
     pub const ITEM_LABEL_SUPPORTING_TEXT_SPACING: Pixels = Pixels(0.0);
-    pub const ITEM_CONTENT_DISABLED_OPACITY: f32 = 0.38;
+    pub const ITEM_CONTENT_DISABLED_OPACITY: f32 = crate::style::DISABLED_STATE_LAYER_OPACITY;
 }
 
 #[cfg(feature = "pub-internal-const")]
@@ -194,12 +194,7 @@ where
         self
     }
 
-    /// Sets the label font of the menu, is `Some`.
-    #[must_use]
-    pub fn label_font_maybe(mut self, font: Option<Font>) -> Self {
-        self.label_font = font;
-        self
-    }
+    crate::macros::maybe_assign!(label_font_maybe, label_font, Option<Font>);
 }
 
 impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer>

@@ -1,4 +1,4 @@
-use iced::{Event, Rectangle, mouse, touch};
+use iced::{Event, Rectangle, advanced::Shell, mouse, touch};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PressUpdate {
@@ -17,6 +17,14 @@ pub fn pointer_when(enabled: bool, cursor: mouse::Cursor, bounds: Rectangle) -> 
         mouse::Interaction::Pointer
     } else {
         mouse::Interaction::default()
+    }
+}
+
+pub fn hovered(event: &Event, bounds: Rectangle, cursor: mouse::Cursor) -> bool {
+    match event {
+        Event::Touch(touch::Event::FingerPressed { position, .. })
+        | Event::Touch(touch::Event::FingerLifted { position, .. }) => bounds.contains(*position),
+        _ => cursor.is_over(bounds),
     }
 }
 
@@ -55,5 +63,31 @@ pub fn update_press(
             PressUpdate::Lost
         }
         _ => PressUpdate::Ignored,
+    }
+}
+
+pub fn toggle_press<Message>(
+    event: &Event,
+    is_pressed: &mut bool,
+    is_hovered: bool,
+    enabled: bool,
+    on_toggle: Option<&Message>,
+    shell: &mut Shell<'_, Message>,
+) where
+    Message: Clone,
+{
+    match event {
+        Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) if is_hovered && enabled => {
+            shell.capture_event();
+            *is_pressed = true;
+        }
+        Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) if *is_pressed => {
+            shell.capture_event();
+            *is_pressed = false;
+            if is_hovered && let Some(on_toggle) = on_toggle {
+                shell.publish(on_toggle.clone());
+            }
+        }
+        _ => {}
     }
 }
