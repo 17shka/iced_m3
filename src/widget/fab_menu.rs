@@ -35,6 +35,7 @@ use crate::{
             placement,
         },
         ripple::Ripple,
+        tooltip,
     },
 };
 
@@ -59,6 +60,7 @@ pub struct Style {
     pub state_layer_collapsed: StateLayer,
     pub item_style: button::Style,
     pub accent: Accent,
+    pub tooltip: tooltip::Style,
 }
 
 impl Style {
@@ -76,6 +78,7 @@ impl Style {
             state_layer_collapsed: StateLayer::new(accent.on_color_container(theme)),
             item_style: button::Style::fab_tonal(theme, accent),
             accent,
+            tooltip: tooltip::Style::new(theme),
         }
     }
 }
@@ -115,6 +118,7 @@ where
 impl<'a, Message, Theme, Renderer> FABMenu<'a, Message, Theme, Renderer>
 where
     Message: 'a + Clone,
+    Theme: 'a,
     Renderer: 'a
         + iced::advanced::text::Renderer
         + iced::advanced::svg::Renderer
@@ -209,6 +213,7 @@ struct State {
     items_ready: bool,
     ripple: Ripple,
     last_style: Style,
+    tooltip: tooltip::Hover,
 }
 
 impl State {
@@ -261,6 +266,7 @@ where
             items_ready: false,
             ripple: Ripple::new(),
             last_style: self.style,
+            tooltip: tooltip::Hover::default(),
         };
 
         tree::State::new(state)
@@ -359,6 +365,14 @@ where
         let state = tree.state.downcast_mut::<State>();
 
         let is_hovered = cursor.is_over(layout.bounds());
+        state.tooltip.update(
+            event,
+            cursor,
+            Some(layout.bounds()),
+            true,
+            tooltip::DEFAULT_DELAY,
+            shell,
+        );
         state
             .ripple
             .handle(event, layout.bounds(), cursor, true, shell);
@@ -453,19 +467,53 @@ where
         _viewport: &Rectangle,
         translation: Vector,
     ) -> Option<iced::advanced::overlay::Element<'b, Message, Theme, Renderer>> {
-        let state = tree.state.downcast_ref::<State>();
-
-        let is_animating = state.presented_progress > 0.0;
+        let (is_expanded, is_animating, tooltip_open) = {
+            let state = tree.state.downcast_ref::<State>();
+            (
+                state.is_expanded,
+                state.presented_progress > 0.0,
+                state.tooltip.is_open(),
+            )
+        };
 
         let mut base_bounds = layout.bounds();
         base_bounds.x += translation.x;
         base_bounds.y += translation.y;
 
-        (state.is_expanded || is_animating).then_some(overlay::Element::new(Box::new(Overlay {
-            base_bounds,
-            tree,
-            items: &mut self.items,
-        })))
+        let mut children: Vec<iced::advanced::overlay::Element<'b, Message, Theme, Renderer>> =
+            Vec::new();
+
+        if is_expanded || is_animating {
+            children.push(overlay::Element::new(Box::new(Overlay {
+                base_bounds,
+                tree,
+                items: &mut self.items,
+            })));
+        }
+
+        if tooltip_open {
+            // The trigger is icon-only, so spell out what pressing it does.
+            children.push(tooltip::label_overlay(
+                base_bounds,
+                text::Fragment::Owned(if is_expanded {
+                    crate::i18n::fab_menu_close_menu().into_owned()
+                } else {
+                    crate::i18n::fab_menu_open_menu().into_owned()
+                }),
+                None,
+                self.style.tooltip,
+                tooltip::Position::Above,
+                8.0,
+                tooltip::DEFAULT_MAX_WIDTH,
+                None,
+            ));
+        }
+
+        if children.is_empty() {
+            None
+        } else {
+            Some(iced::advanced::overlay::Group::with_children(children).overlay())
+        }
     }
 }
 

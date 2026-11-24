@@ -41,7 +41,8 @@ use crate::animation::motion::{self, SpringValue};
 use crate::style::DIM_ALPHA;
 use crate::theme::ColorScheme;
 use crate::widget::internal::focus::Focus;
-use crate::widget::{common_icons, menu};
+use crate::widget::{common_icons, menu, tooltip};
+use iced_widget::text::IntoFragment;
 
 pub struct TextInput<'a, Message, Theme = iced_widget::Theme, Renderer = iced_widget::Renderer>
 where
@@ -70,6 +71,8 @@ where
     background_color: Option<Color>,
     error: bool,
     clearable: bool,
+    tooltip_style: tooltip::Style,
+    icon_tooltip: Option<text::Fragment<'a>>,
 }
 
 /// The default [`Padding`] of a [`TextInput`].
@@ -257,6 +260,8 @@ where
             background_color: None,
             error: false,
             clearable: false,
+            tooltip_style: tooltip::Style::new(theme),
+            icon_tooltip: None,
         }
     }
 
@@ -271,6 +276,20 @@ where
     /// [`on_input`](Self::on_input) callback and its value is not empty.
     pub fn clearable(mut self, clearable: bool) -> Self {
         self.clearable = clearable;
+        self
+    }
+
+    /// Sets the [`tooltip::Style`] used for the built-in tooltips.
+    #[must_use]
+    pub fn tooltip_style(mut self, style: tooltip::Style) -> Self {
+        self.tooltip_style = style;
+        self
+    }
+
+    /// Sets the label shown in a tooltip when the [`Icon`] is hovered.
+    #[must_use]
+    pub fn icon_tooltip(mut self, label: impl IntoFragment<'a>) -> Self {
+        self.icon_tooltip = Some(label.into_fragment());
         self
     }
 
@@ -458,6 +477,15 @@ where
         }
 
         children.next().map(|clear| clear.bounds())
+    }
+
+    fn icon_bounds(&self, layout: Layout<'_>) -> Option<Rectangle> {
+        self.icon.as_ref()?;
+
+        let mut children = layout.children();
+        children.next()?;
+
+        children.next().map(|icon| icon.bounds())
     }
 
     /// Lays out the [`TextInput`], overriding its [`Value`] if provided.
@@ -1003,12 +1031,12 @@ where
     }
 }
 
-impl<Message, Theme, Renderer> Widget<Message, Theme, Renderer>
-    for TextInput<'_, Message, Theme, Renderer>
+impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer>
+    for TextInput<'a, Message, Theme, Renderer>
 where
     Message: Clone,
     Theme: Catalog,
-    Renderer: text::Renderer + svg::Renderer,
+    Renderer: text::Renderer + svg::Renderer + 'a,
 {
     fn tag(&self) -> tree::Tag {
         tree::Tag::of::<State<Renderer::Paragraph>>()
@@ -1111,6 +1139,37 @@ where
                     shell.request_redraw();
                 }
             }
+        }
+
+        {
+            let state = state::<Renderer>(tree);
+
+            // The eye, clear and icon buttons are drawn by hand, so their tooltips are driven
+            // manually instead of wrapping them in a `Tooltip`.
+            state.eye_hover.update(
+                event,
+                cursor,
+                self.eye_bounds(layout),
+                self.on_toggle_secure.is_some(),
+                tooltip::DEFAULT_DELAY,
+                shell,
+            );
+            state.clear_hover.update(
+                event,
+                cursor,
+                self.clear_bounds(layout),
+                self.show_clear(&self.value),
+                tooltip::DEFAULT_DELAY,
+                shell,
+            );
+            state.icon_hover.update(
+                event,
+                cursor,
+                self.icon_bounds(layout),
+                self.icon.is_some() && self.icon_tooltip.is_some(),
+                tooltip::DEFAULT_DELAY,
+                shell,
+            );
         }
 
         let text_bounds = layout
@@ -1946,24 +2005,83 @@ where
     fn overlay<'b>(
         &'b mut self,
         tree: &'b mut Tree,
-        _layout: Layout<'b>,
-        _renderer: &Renderer,
+        layout: Layout<'b>,
+        renderer: &Renderer,
         _viewport: &Rectangle,
         translation: Vector,
     ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
         let state = tree.state.downcast_mut::<State<Renderer::Paragraph>>();
 
-        state.context_menu?;
+        if state.context_menu.is_some() {
+            let style = menu::Style::new(self.theme, false);
+            let font = self.font;
 
-        let style = menu::Style::new(self.theme, false);
-        let font = self.font;
+            return Some(overlay::Element::new(Box::new(ContextMenuOverlay {
+                host: TextInputContext { input: self, state },
+                style,
+                font,
+                translation,
+            })));
+        }
 
-        Some(overlay::Element::new(Box::new(ContextMenuOverlay {
-            host: TextInputContext { input: self, state },
-            style,
-            font,
-            translation,
-        })))
+        let font = self.font.unwrap_or_else(|| renderer.default_font());
+        let translate =
+            |rect: Rectangle| Rectangle::new(rect.position() + translation, rect.size());
+
+        // The eye button is icon-only, so spell out what it does.
+        if state.eye_hover.is_open()
+            && let Some(bounds) = self.eye_bounds(layout)
+        {
+            let label = if self.is_secure {
+                crate::i18n::text_input_show_password()
+            } else {
+                crate::i18n::text_input_hide_password()
+            };
+
+            return Some(tooltip::label_overlay(
+                translate(bounds),
+                text::Fragment::Owned(label.into_owned()),
+                Some(font),
+                self.tooltip_style,
+                tooltip::Position::Above,
+                8.0,
+                tooltip::DEFAULT_MAX_WIDTH,
+                None,
+            ));
+        }
+
+        if state.clear_hover.is_open()
+            && let Some(bounds) = self.clear_bounds(layout)
+        {
+            return Some(tooltip::label_overlay(
+                translate(bounds),
+                text::Fragment::Owned(crate::i18n::text_input_clear().into_owned()),
+                Some(font),
+                self.tooltip_style,
+                tooltip::Position::Above,
+                8.0,
+                tooltip::DEFAULT_MAX_WIDTH,
+                None,
+            ));
+        }
+
+        if state.icon_hover.is_open()
+            && let Some(bounds) = self.icon_bounds(layout)
+            && let Some(label) = self.icon_tooltip.clone()
+        {
+            return Some(tooltip::label_overlay(
+                translate(bounds),
+                label,
+                Some(font),
+                self.tooltip_style,
+                tooltip::Position::Above,
+                8.0,
+                tooltip::DEFAULT_MAX_WIDTH,
+                None,
+            ));
+        }
+
+        None
     }
 
     fn mouse_interaction(
@@ -2056,6 +2174,9 @@ pub struct State<P: text::Paragraph> {
     context_menu: Option<ContextMenu>,
     text_bounds: Option<Rectangle>,
     history: History,
+    eye_hover: tooltip::Hover,
+    clear_hover: tooltip::Hover,
+    icon_hover: tooltip::Hover,
     // TODO: Add stateful horizontal scrolling offset
 }
 

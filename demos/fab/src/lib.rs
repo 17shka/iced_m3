@@ -4,7 +4,7 @@ use iced::{
     widget::{column, row, text},
 };
 use iced_m3::theme::{Accent, ColorScheme, Theme};
-use iced_m3::widget::{Action, button, fab, fab_menu, hybrid_icon::Icon};
+use iced_m3::widget::{Action, button, fab, fab_menu, hybrid_icon::Icon, tooltip};
 
 #[derive(Clone)]
 pub enum Message {
@@ -61,7 +61,8 @@ impl Page {
                     },
                     Action::Direct(Message::Noop),
                 )
-                .size(fab::Size::Regular),
+                .size(fab::Size::Regular)
+                .tooltip("Add", tooltip::Style::new(theme)),
                 fab(
                     fab::Style::fab_tonal(theme, Accent::Secondary),
                     fab::Content::Reguar {

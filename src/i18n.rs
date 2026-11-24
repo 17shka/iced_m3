@@ -108,7 +108,14 @@ macro_rules! widget_strings {
 
 widget_strings! {
     dialog_title => "widget.dialog.title";
+    dialog_close => "widget.dialog.close";
     select_search => "widget.select.search";
+    select_clear => "widget.select.clear";
+    select_clear_search => "widget.select.clear_search";
+    navrail_expand_menu => "widget.navrail.expand_menu";
+    navrail_collapse_menu => "widget.navrail.collapse_menu";
+    fab_menu_open_menu => "widget.fab_menu.open_menu";
+    fab_menu_close_menu => "widget.fab_menu.close_menu";
     theme_system => "widget.theme.system";
     theme_light => "widget.theme.light";
     theme_dark => "widget.theme.dark";
@@ -119,6 +126,9 @@ widget_strings! {
     text_input_paste => "widget.text_input.paste";
     text_input_select_word => "widget.text_input.select_word";
     text_input_select_all => "widget.text_input.select_all";
+    text_input_clear => "widget.text_input.clear";
+    text_input_show_password => "widget.text_input.show_password";
+    text_input_hide_password => "widget.text_input.hide_password";
 }
 
 #[cfg(test)]
@@ -129,12 +139,15 @@ mod tests {
     #[test]
     fn english_fallback_reads_the_bundled_locale() {
         assert_eq!(dialog_title(), "Title");
+        assert_eq!(dialog_close(), "Close");
         assert_eq!(select_search(), "Search");
+        assert_eq!(select_clear(), "Clear selection");
         assert_eq!(theme_system(), "System");
         assert_eq!(theme_light(), "Light");
         assert_eq!(theme_dark(), "Dark");
         assert_eq!(text_input_copy(), "Copy");
         assert_eq!(text_input_select_word(), "Select word");
+        assert_eq!(text_input_clear(), "Clear");
         assert_eq!(translate("widget.unknown.key"), "widget.unknown.key");
     }
 

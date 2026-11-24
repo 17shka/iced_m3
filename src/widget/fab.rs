@@ -9,6 +9,7 @@ use crate::{
         Action,
         button::{self, CornerStyle},
         hybrid_icon::Icon,
+        tooltip,
     },
 };
 
@@ -155,6 +156,8 @@ where
     pub label_font: Option<Font>,
     pub label_size_scale: f32,
     pub on_press: Action<'a, Message>,
+    /// Optional label and style shown in a tooltip on hover.
+    pub tooltip: Option<(text::Fragment<'a>, tooltip::Style)>,
 }
 
 impl<'a, Message> Fab<'a, Message>
@@ -171,6 +174,7 @@ where
             label_font: None,
             label_size_scale: 1.0,
             on_press,
+            tooltip: None,
         }
     }
 
@@ -212,6 +216,13 @@ where
         self
     }
 
+    /// Shows a tooltip with `label` when the [`Fab`] is hovered.
+    #[must_use]
+    pub fn tooltip(mut self, label: impl IntoFragment<'a>, style: tooltip::Style) -> Self {
+        self.tooltip = Some((label.into_fragment(), style));
+        self
+    }
+
     pub fn set_label_size_scale(&mut self, scale: f32) {
         self.label_size_scale = scale;
     }
@@ -230,6 +241,7 @@ impl<'a, Message: 'a + Clone> Clone for Fab<'a, Message> {
                 Action::Direct(msg) => Action::Direct(msg.clone()),
                 Action::Closure(_) => panic!("Fab::clone() does not support Action::Closure"),
             },
+            tooltip: self.tooltip.clone(),
         }
     }
 }
@@ -237,6 +249,7 @@ impl<'a, Message: 'a + Clone> Clone for Fab<'a, Message> {
 impl<'a, Message, Theme, Renderer> From<Fab<'a, Message>> for Element<'a, Message, Theme, Renderer>
 where
     Message: 'a + Clone,
+    Theme: 'a,
     Renderer: 'a
         + iced::advanced::text::Renderer
         + iced::advanced::svg::Renderer
@@ -254,10 +267,19 @@ where
             ))
             .elevation(Elevation::Level3);
 
-        match value.on_press {
+        let button: Element<'a, Message, Theme, Renderer> = match value.on_press {
             Action::Direct(on_press) => button.on_press(on_press),
             Action::Closure(on_press) => button.on_press_with(on_press),
         }
-        .into()
+        .into();
+
+        if let Some((label, tooltip_style)) = value.tooltip {
+            crate::widget::tooltip(tooltip_style, button)
+                .label(label)
+                .position(tooltip::Position::Right)
+                .into()
+        } else {
+            button
+        }
     }
 }

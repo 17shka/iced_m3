@@ -93,6 +93,7 @@ impl Page {
             TextInput::new("Search...", &self.text_input_with_icon, theme)
                 .on_input(Message::TextInputWithIconChanged)
                 .clearable(true)
+                .icon_tooltip("Search")
                 .icon(iced_m3::widget::text_input::Icon {
                     font: fonts::icons_filled(),
                     code_point: '\u{e8b6}',

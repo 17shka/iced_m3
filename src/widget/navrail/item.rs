@@ -25,10 +25,18 @@ const ITEM_LARGE_LABEL_START_X: f32 = 28.0;
 
 pub const ICON_SIZE: f32 = 24.0;
 
+/// Horizontal breathing room kept on each side of a collapsed item's label.
+const ITEM_SMALL_LABEL_MARGIN: f32 = 8.0;
+/// Width of an expanded item that is not the label itself: the icon, the space between the icon
+/// and the label, and the padding on both sides of the pill. Subtracting it from the available
+/// rail width yields the widest label that still fits.
+const ITEM_LARGE_LABEL_CHROME: f32 =
+    ICON_SIZE + 4.0 * INDICATOR_LARGE_PADDING + ITEM_LARGE_ICON_LABEL_SPACE;
+
 use iced::time::Instant;
 
 use iced::{
-    Element, Font, Length, Pixels, Point, Size,
+    Element, Font, Length, Pixels, Point, Rectangle, Size, Vector,
     advanced::{
         Widget,
         layout::Node,
@@ -40,9 +48,12 @@ use iced::{
 
 use crate::{
     animation::motion::{self, Spring, default_effects, fast_effects},
-    widget::internal::navigation_common::{
-        build_badge, colors_for, draw_icon, draw_indicator, draw_label, handle_press,
-        icon_paragraph, paragraph, update_springs,
+    widget::{
+        internal::navigation_common::{
+            build_badge, colors_for, draw_icon, draw_indicator, draw_label, handle_press,
+            icon_paragraph, paragraph, update_springs,
+        },
+        tooltip,
     },
 };
 
@@ -53,10 +64,74 @@ pub use crate::widget::internal::navigation_common::State as CommonState;
 pub(crate) struct State {
     pub common: CommonState,
     pub expansion: f32,
+    /// Hover state of the tooltip that spells out a label that does not fit.
+    tooltip: tooltip::Hover,
 }
 
 fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * t
+}
+
+/// Fits `content` into `max_width`, trimming it and appending an ellipsis when it overflows.
+///
+/// Returns the text to shape together with whether it had to be shortened.
+fn fit_label<Renderer>(
+    renderer: &Renderer,
+    content: &str,
+    max_width: f32,
+    size: Pixels,
+    line_height: text::LineHeight,
+    font: Option<Font>,
+) -> (String, bool)
+where
+    Renderer: text::Renderer,
+    Renderer::Font: From<Font>,
+{
+    let width_of = |text: &str| {
+        paragraph(
+            renderer,
+            text,
+            Size::INFINITE,
+            size,
+            line_height,
+            font,
+            iced::alignment::Vertical::Center,
+        )
+        .min_bounds()
+        .width
+    };
+
+    if !max_width.is_finite() || width_of(content) <= max_width {
+        return (content.to_owned(), false);
+    }
+
+    const ELLIPSIS: char = '…';
+    let ellipsis_width = width_of("…");
+
+    if ellipsis_width > max_width {
+        return (String::new(), true);
+    }
+
+    let mut end = content.len();
+
+    // Walk backwards over char boundaries until the prefix plus the ellipsis fits.
+    while end > 0 {
+        end = content[..end]
+            .char_indices()
+            .next_back()
+            .map_or(0, |(index, _)| index);
+
+        let candidate = content[..end].trim_end();
+
+        if width_of(candidate) + ellipsis_width <= max_width {
+            let mut truncated = String::with_capacity(candidate.len() + ELLIPSIS.len_utf8());
+            truncated.push_str(candidate);
+            truncated.push(ELLIPSIS);
+            return (truncated, true);
+        }
+    }
+
+    (ELLIPSIS.to_string(), true)
 }
 
 pub struct Item<'a, Message, Theme, Renderer>
@@ -75,10 +150,17 @@ where
     active_transition_spring: Option<Spring>,
     color_spring: Option<Spring>,
     hide_labels_when_collapsed: bool,
+    /// Width available to the labels, or `None` when the rail grows with its content.
+    max_label_width: Option<f32>,
+    tooltip_style: tooltip::Style,
 
     // Cache
     small_label_paragraph: Option<Renderer::Paragraph>,
     large_label_paragraph: Option<Renderer::Paragraph>,
+    small_label_text: Option<String>,
+    large_label_text: Option<String>,
+    small_label_truncated: bool,
+    large_label_truncated: bool,
     icon_paragraph: Option<Renderer::Paragraph>,
     badge: Option<Element<'a, Message, Theme, Renderer>>,
 }
@@ -101,6 +183,8 @@ where
         label_font: Option<Font>,
         active: bool,
         hide_labels_when_collapsed: bool,
+        max_label_width: Option<f32>,
+        tooltip_style: tooltip::Style,
     ) -> Self {
         let badge =
             build_badge::<Message, Theme, Renderer>(&style, content.badge.as_ref(), ICON_SIZE);
@@ -114,8 +198,14 @@ where
             active_transition_spring: None,
             color_spring: None,
             hide_labels_when_collapsed,
+            max_label_width,
+            tooltip_style,
             small_label_paragraph: None,
             large_label_paragraph: None,
+            small_label_text: None,
+            large_label_text: None,
+            small_label_truncated: false,
+            large_label_truncated: false,
             icon_paragraph: None,
             badge,
         }
@@ -181,6 +271,7 @@ where
         let state = State {
             common,
             expansion: self.expanded as usize as f32,
+            tooltip: tooltip::Hover::default(),
         };
 
         iced::advanced::widget::tree::State::new(state)
@@ -216,27 +307,66 @@ where
         };
         self.icon_paragraph = icon_paragraph(renderer, icon, ICON_SIZE);
 
-        if self.small_label_paragraph.is_none() {
+        // A label that does not fit the rail is ellipsized; hovering the item then shows the full
+        // text as a tooltip. Only the label that is actually visible for the current mode is
+        // shortened, so the one that is fading out during the expansion animation keeps its size.
+        let small_max_width = match (self.expanded, self.max_label_width) {
+            (false, Some(width)) => (width - 2.0 * ITEM_SMALL_LABEL_MARGIN).max(0.0),
+            _ => f32::INFINITY,
+        };
+        let large_max_width = match (self.expanded, self.max_label_width) {
+            (true, Some(width)) => (width - ITEM_LARGE_LABEL_CHROME).max(0.0),
+            _ => f32::INFINITY,
+        };
+
+        let (small_text, small_truncated) = fit_label(
+            renderer,
+            &self.content.label,
+            small_max_width,
+            Pixels(ITEM_SMALL_LABEL_SIZE),
+            text::LineHeight::Absolute(Pixels(ITEM_SMALL_LABEL_LINE_HEIGHT)),
+            self.label_font,
+        );
+        let (large_text, large_truncated) = fit_label(
+            renderer,
+            &self.content.label,
+            large_max_width,
+            Pixels(ITEM_LARGE_LABEL_SIZE),
+            text::LineHeight::Absolute(Pixels(ITEM_LARGE_LABEL_LINE_HEIGHT)),
+            self.label_font,
+        );
+
+        // Labels hidden while collapsed are spelled out by the wrapping `Tooltip` instead.
+        self.small_label_truncated = small_truncated && !self.hide_labels_when_collapsed;
+        self.large_label_truncated = large_truncated;
+
+        if self.small_label_paragraph.is_none()
+            || self.small_label_text.as_deref() != Some(small_text.as_str())
+        {
             self.small_label_paragraph = Some(paragraph(
                 renderer,
-                &self.content.label,
+                &small_text,
                 Size::INFINITE,
                 Pixels(ITEM_SMALL_LABEL_SIZE),
                 text::LineHeight::Absolute(Pixels(ITEM_SMALL_LABEL_LINE_HEIGHT)),
                 self.label_font,
                 iced::alignment::Vertical::Center,
             ));
+            self.small_label_text = Some(small_text);
         }
-        if self.large_label_paragraph.is_none() {
+        if self.large_label_paragraph.is_none()
+            || self.large_label_text.as_deref() != Some(large_text.as_str())
+        {
             self.large_label_paragraph = Some(paragraph(
                 renderer,
-                &self.content.label,
+                &large_text,
                 Size::INFINITE,
                 Pixels(ITEM_LARGE_LABEL_SIZE),
                 text::LineHeight::Absolute(Pixels(ITEM_LARGE_LABEL_LINE_HEIGHT)),
                 self.label_font,
                 iced::alignment::Vertical::Center,
             ));
+            self.large_label_text = Some(large_text);
         }
 
         let small_bounds = self
@@ -529,6 +659,22 @@ where
             self.color_spring,
             shell,
         );
+
+        // Spell out a label that had to be shortened, like the rail's other tooltips.
+        let truncated = if self.expanded {
+            self.large_label_truncated
+        } else {
+            self.small_label_truncated
+        };
+
+        state.tooltip.update(
+            event,
+            cursor,
+            Some(bounds),
+            truncated,
+            tooltip::DEFAULT_DELAY,
+            shell,
+        );
     }
 
     fn mouse_interaction(
@@ -543,6 +689,41 @@ where
             true => iced::advanced::mouse::Interaction::Pointer,
             false => iced::advanced::mouse::Interaction::None,
         }
+    }
+
+    fn overlay<'b>(
+        &'b mut self,
+        tree: &'b mut Tree,
+        layout: iced::advanced::Layout<'b>,
+        _renderer: &Renderer,
+        _viewport: &Rectangle,
+        translation: Vector,
+    ) -> Option<iced::advanced::overlay::Element<'b, Message, Theme, Renderer>> {
+        let state = tree.state.downcast_ref::<State>();
+        let truncated = if self.expanded {
+            self.large_label_truncated
+        } else {
+            self.small_label_truncated
+        };
+
+        if !truncated || !state.tooltip.is_open() {
+            return None;
+        }
+
+        // The label nodes are pushed in a fixed order at the end of `layout`.
+        let label_bounds = layout.child(if self.expanded { 3 } else { 2 }).bounds();
+        let anchor = Rectangle::new(label_bounds.position() + translation, label_bounds.size());
+
+        Some(tooltip::label_overlay(
+            anchor,
+            text::Fragment::Borrowed(self.content.label.as_ref()),
+            self.label_font.map(Renderer::Font::from),
+            self.tooltip_style,
+            tooltip::Position::Right,
+            tooltip::DEFAULT_GAP,
+            tooltip::DEFAULT_MAX_WIDTH,
+            None,
+        ))
     }
 }
 

@@ -19,7 +19,7 @@ use crate::{
     animation::motion::{self, Spring, SpringValue},
     style::{Elevation, StateLayer},
     theme::{Accent, ColorScheme},
-    widget::{button, common_icons, hybrid_icon::Icon, icon, internal::placement},
+    widget::{button, common_icons, hybrid_icon::Icon, icon, internal::placement, tooltip},
 };
 
 mod constants {
@@ -66,6 +66,8 @@ pub struct Style {
     pub shadow_color: Color,
     /// Style of the close button shown in the header of a fullscreen dialog.
     pub close_button: button::Style,
+    /// Style of the tooltip shown for the fullscreen close button.
+    pub tooltip_style: tooltip::Style,
 }
 
 impl Style {
@@ -88,6 +90,7 @@ impl Style {
             elevation: Elevation::Level3,
             shadow_color: theme.shadow(),
             close_button,
+            tooltip_style: tooltip::Style::new(theme),
         }
     }
 }
@@ -321,6 +324,7 @@ where
             elevation,
             shadow_color,
             close_button: close_button_style,
+            tooltip_style,
         } = style;
 
         let icon_element =
@@ -371,7 +375,13 @@ where
             header_items.push(title_element.into());
             header_items.push(space().width(Length::Fill).into());
             if let Some(close_button) = close_button {
-                header_items.push(close_button.into());
+                header_items.push(
+                    crate::widget::tooltip(tooltip_style, close_button)
+                        .label(text::Fragment::Owned(
+                            crate::i18n::dialog_close().into_owned(),
+                        ))
+                        .into(),
+                );
             }
 
             let header = row(header_items)

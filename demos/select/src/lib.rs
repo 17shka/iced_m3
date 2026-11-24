@@ -40,7 +40,7 @@ impl Default for Page {
             clearable: true,
             close_on_select: true,
             search: true,
-            small: Some("item2".to_owned()),
+            small: None,
             large: Some("Select".to_owned()),
         }
     }
@@ -106,16 +106,10 @@ impl Page {
         // Only some options carry an icon: the icon slot is still reserved so the labels stay
         // aligned.
         let small_items: Vec<Item<String>> = vec![
-            Item::new("item1".to_owned()).icon(icons::ADD.clone()),
-            Item::new("item2".to_owned()).icon(icons::CHECK.clone()),
             Item::new("short text".to_owned()),
             Item::separator(),
             Item::new("a long text-so long, in fact, that it doesn't all fit".to_owned())
                 .icon(icons::CLOSE.clone()),
-            Item::new(
-                "an even larger text that DEFINITELY won't fit here-there’s just so little space! ahhhhh"
-                    .to_owned(),
-            ),
         ];
 
         // The page names and icons come from the shared catalog so the showcase and this demo

@@ -31,6 +31,7 @@ use crate::{
             ContextMenu, ContextMenuHost, ContextMenuOverlay, Cursor, EditKind, Editor, History,
             Value, cursor, edit_value,
         },
+        tooltip,
     },
 };
 
@@ -162,6 +163,7 @@ where
     motion_spring: Option<Spring>,
     style: Style,
     menu_style: menu::Style,
+    tooltip_style: tooltip::Style,
     width: Length,
     padding: Padding,
     text_size: Pixels,
@@ -288,6 +290,7 @@ where
             motion_spring: None,
             style: Style::new(theme),
             menu_style: menu::Style::new(theme, false),
+            tooltip_style: tooltip::Style::new(theme),
             width: Length::Fill,
             padding: Padding {
                 top: 0.0,
@@ -390,6 +393,12 @@ where
     #[must_use]
     pub fn style(mut self, style: Style) -> Self {
         self.style = style;
+        self
+    }
+
+    #[must_use]
+    pub fn tooltip_style(mut self, style: tooltip::Style) -> Self {
+        self.tooltip_style = style;
         self
     }
 
@@ -720,6 +729,7 @@ impl<'a, T, Message, Theme, Renderer> Widget<Message, Theme, Renderer> for Selec
 where
     T: Clone + PartialEq + 'a,
     Message: Clone + 'a,
+    Theme: 'a,
     Renderer: text::Renderer<Font = iced::Font> + svg::Renderer + 'a,
 {
     fn tag(&self) -> tree::Tag {
@@ -929,6 +939,24 @@ where
             shell.request_redraw();
         }
 
+        // Both field tooltips (the clear button and the truncated value) share the field's hover
+        // delay. They are suppressed while the menu is open. The cross is a target of its own, so
+        // hovering it always waits for the delay instead of reusing the timer of the field body.
+        let tooltip_target = if is_clear_hovered {
+            Self::clear_bounds(bounds)
+        } else {
+            bounds
+        };
+
+        state.field_tooltip.update(
+            event,
+            cursor,
+            Some(tooltip_target),
+            !state.is_open,
+            tooltip::DEFAULT_DELAY,
+            shell,
+        );
+
         match event {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
             | Event::Touch(touch::Event::FingerPressed { .. }) => {
@@ -975,53 +1003,141 @@ where
         &'b mut self,
         tree: &'b mut Tree,
         layout: Layout<'b>,
-        _renderer: &Renderer,
+        renderer: &Renderer,
         _viewport: &Rectangle,
         translation: Vector,
     ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
         let state = tree.state.downcast_mut::<State>();
 
-        if !state.is_open && state.progress.is_at_rest() {
-            return None;
-        }
-
-        // Freeze the highlighted option while closing so that picking an item does not make the
-        // highlight (or the surface position) jump to another row during the fade-out.
-        if state.is_open {
-            state.shown_selected = self.selected_index();
-        }
-
         let mut anchor_bounds = layout.bounds();
         anchor_bounds.x += translation.x;
         anchor_bounds.y += translation.y;
 
-        let selected = state.shown_selected;
+        let menu_open = state.is_open || !state.progress.is_at_rest();
 
-        let items = Rc::clone(&self.items);
-        let on_selected = &self.on_selected;
-        let on_select: Box<dyn Fn(Option<usize>) -> Message + 'b> = Box::new(move |index| {
-            let value = index.and_then(|index| items[index].value().cloned());
+        let font = self.font.unwrap_or_else(|| renderer.default_font());
 
-            (on_selected)(value)
-        });
+        let tooltip = if menu_open || !state.field_tooltip.is_open() {
+            None
+        } else if state.clear_hovered {
+            // The clear button is icon-only, so spell out what it does.
+            let center = Self::clear_center(anchor_bounds);
+            let size = constants::CLEAR_ICON_SIZE.0;
+            let anchor = Rectangle::new(
+                Point::new(center.x - size / 2.0, center.y - size / 2.0),
+                Size::new(size, size),
+            );
 
-        Some(overlay::Element::new(Box::new(Overlay {
-            state,
-            items: Rc::clone(&self.items),
-            selected,
-            on_select,
-            style: self.style,
-            menu_style: self.menu_style,
-            direction: self.direction,
-            clearable: self.clearable,
-            close_on_select: self.close_on_select,
-            searchable: self.searchable,
-            anchor_bounds,
-            item_height: self.item_height,
-            item_text_size: self.item_text_size,
-            max_menu_height: self.max_menu_height,
-            font: self.font,
-        })))
+            Some(tooltip::label_overlay(
+                anchor,
+                text::Fragment::Owned(crate::i18n::select_clear().into_owned()),
+                Some(font),
+                self.tooltip_style,
+                tooltip::Position::Above,
+                constants::GAP,
+                tooltip::DEFAULT_MAX_WIDTH,
+                None,
+            ))
+        } else if state.hovered {
+            // When the field has to ellipsize its value, show the full text on hover.
+            let label = self
+                .selected_item()
+                .and_then(Item::label)
+                .unwrap_or(self.placeholder.as_str());
+
+            let available = (anchor_bounds.width
+                - self.padding.left
+                - self.padding.right
+                - self.icon_slot()
+                - self.reserved_width())
+            .max(0.0);
+
+            if !label.is_empty()
+                && available > 0.0
+                && text_width(renderer, label, self.text_size, font) > available
+            {
+                Some(tooltip::label_overlay(
+                    anchor_bounds,
+                    text::Fragment::Owned(label.to_owned()),
+                    Some(font),
+                    self.tooltip_style,
+                    tooltip::Position::Above,
+                    constants::GAP,
+                    tooltip::DEFAULT_MAX_WIDTH,
+                    None,
+                ))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let menu = if menu_open {
+            // Freeze the highlighted option while closing so that picking an item does not make the
+            // highlight (or the surface position) jump to another row during the fade-out.
+            if state.is_open {
+                state.shown_selected = self.selected_index();
+            }
+
+            let selected = state.shown_selected;
+
+            let items = Rc::clone(&self.items);
+            let on_selected = &self.on_selected;
+            let on_select: Box<dyn Fn(Option<usize>) -> Message + 'b> = Box::new(move |index| {
+                let value = index.and_then(|index| items[index].value().cloned());
+
+                (on_selected)(value)
+            });
+
+            let menu = Overlay {
+                state,
+                items: Rc::clone(&self.items),
+                selected,
+                on_select,
+                style: self.style,
+                menu_style: self.menu_style,
+                direction: self.direction,
+                clearable: self.clearable,
+                close_on_select: self.close_on_select,
+                searchable: self.searchable,
+                anchor_bounds,
+                item_height: self.item_height,
+                item_text_size: self.item_text_size,
+                max_menu_height: self.max_menu_height,
+                font: self.font,
+            };
+
+            // The menu's tooltip is a sibling of the surface and not one of its nested overlays:
+            // the runtime reports no mouse interaction for an overlay with a nested child, which
+            // would let the widgets below the popup receive the pointer and open their own
+            // tooltips through the menu.
+            let menu_tooltip = menu.hovered_tooltip(renderer).map(|menu_tooltip| {
+                tooltip::label_overlay(
+                    menu_tooltip.anchor,
+                    text::Fragment::Owned(menu_tooltip.label),
+                    Some(font),
+                    self.tooltip_style,
+                    menu_tooltip.position,
+                    constants::GAP,
+                    menu_tooltip.max_width,
+                    None,
+                )
+            });
+
+            let menu = overlay::Element::new(Box::new(menu));
+
+            Some(match menu_tooltip {
+                Some(menu_tooltip) => {
+                    overlay::Group::with_children(vec![menu, menu_tooltip]).overlay()
+                }
+                None => menu,
+            })
+        } else {
+            None
+        };
+
+        menu.or(tooltip)
     }
 }
 
@@ -1077,6 +1193,10 @@ struct State {
     context_menu: Option<ContextMenu>,
     /// Caret blink bookkeeping for the search field.
     blink: Blink,
+    /// Hover delay of the tooltips shown for the field itself (clear button, truncated value).
+    field_tooltip: tooltip::Hover,
+    /// Hover delay of the tooltips shown inside the open menu (clear button, truncated option).
+    menu_tooltip: tooltip::Hover,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -1120,6 +1240,8 @@ impl Default for State {
             geometry: None,
             context_menu: None,
             blink: Blink::default(),
+            field_tooltip: tooltip::Hover::default(),
+            menu_tooltip: tooltip::Hover::default(),
         }
     }
 }
@@ -1134,6 +1256,7 @@ impl State {
         self.menu_hovered = false;
         self.scrollbar_drag = None;
         self.shown_selected = None;
+        self.menu_tooltip = tooltip::Hover::default();
         self.query = Value::new("");
         self.cursor = Cursor::default();
         self.history.reset("");
@@ -1157,6 +1280,7 @@ impl State {
         self.search_clear_hovered = false;
         self.dragging = None;
         self.context_menu = None;
+        self.menu_tooltip = tooltip::Hover::default();
         self.history.break_group();
         // Start the close animation immediately. The overlay only exists while the spring is not
         // at rest, and it is created *before* `update` runs, so waiting for the next animation
@@ -1241,7 +1365,14 @@ struct Overlay<'a, T, Message> {
     font: Option<Font>,
 }
 
-/// A single visual row of the menu: either a separator rule or a selectable option.
+/// A tooltip the open menu wants to show, described so `Select::overlay` can draw it outside the
+/// menu surface.
+struct MenuTooltip {
+    anchor: Rectangle,
+    label: String,
+    position: tooltip::Position,
+    max_width: f32,
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Row {
     Separator,
@@ -1434,6 +1565,135 @@ impl<T, Message> Overlay<'_, T, Message> {
             Point::new(center.x - size / 2.0, center.y - size / 2.0),
             Size::new(size, size),
         ))
+    }
+
+    /// Bounds of the option row at `index` inside the menu surface, factoring in the scroll
+    /// offset.
+    fn row_bounds(&self, index: usize, bounds: Rectangle) -> Option<Rectangle> {
+        let rows = self.rows();
+        let row = rows
+            .iter()
+            .position(|row| matches!(row, Row::Option { index: item, .. } if *item == index))?;
+        let list = self.list_bounds(bounds);
+        let offset = self.scroll_offset(bounds.height);
+        let top: f32 = rows[..row]
+            .iter()
+            .map(|&row| self.row_height(row) + constants::ITEM_SPACING)
+            .sum();
+        let item_width = if self.scrollbar(bounds).is_some() {
+            (list.width - constants::SCROLLBAR_GUTTER).max(0.0)
+        } else {
+            list.width
+        };
+
+        Some(Rectangle::new(
+            Point::new(list.x, list.y - offset + top),
+            Size::new(item_width, self.row_height(rows[row])),
+        ))
+    }
+
+    /// Width available to an option's label inside the menu surface.
+    fn row_text_width(&self, bounds: Rectangle) -> f32 {
+        let list = self.list_bounds(bounds);
+        let item_width = if self.scrollbar(bounds).is_some() {
+            (list.width - constants::SCROLLBAR_GUTTER).max(0.0)
+        } else {
+            list.width
+        };
+        let text_x_offset =
+            constants::ITEM_PADDING + constants::ITEM_ICON_SLOT + constants::ITEM_ICON_SPACING;
+
+        (item_width - constants::ITEM_PADDING - text_x_offset).max(0.0)
+    }
+
+    /// The menu element under the pointer that can show a tooltip.
+    ///
+    /// The hover delay is tracked per element, so this is the exact row or button rather than the
+    /// whole surface: otherwise the first tooltip would arm the timer for every other element and
+    /// they would appear without a delay.
+    fn tooltip_target<Renderer>(&self, renderer: &Renderer, bounds: Rectangle) -> Option<Rectangle>
+    where
+        Renderer: text::Renderer<Font = Font>,
+    {
+        if self.state.search_clear_hovered {
+            return self.search_clear_bounds(bounds);
+        }
+
+        let index = self.state.hovered_item?;
+        let label = self.items.get(index)?.label()?;
+
+        self.label_is_truncated(renderer, label, bounds)
+            .then(|| self.row_bounds(index, bounds))
+            .flatten()
+    }
+
+    /// Whether an option label does not fit in its row.
+    fn label_is_truncated<Renderer>(
+        &self,
+        renderer: &Renderer,
+        label: &str,
+        bounds: Rectangle,
+    ) -> bool
+    where
+        Renderer: text::Renderer<Font = Font>,
+    {
+        let font = self.font.unwrap_or_else(|| renderer.default_font());
+
+        !label.is_empty()
+            && text_width(renderer, label, self.item_text_size, font) > self.row_text_width(bounds)
+    }
+
+    /// Anchor and label of the tooltip for the hovered menu entry, when one should be shown.
+    ///
+    /// Used by the `Select` overlay to place the tooltip next to the menu surface instead of
+    /// nesting it inside, which would let the pointer reach the widgets behind the popup.
+    fn hovered_tooltip<Renderer>(&self, renderer: &Renderer) -> Option<MenuTooltip>
+    where
+        Renderer: text::Renderer<Font = Font>,
+    {
+        if !self.state.is_open || !self.state.menu_tooltip.is_open() {
+            return None;
+        }
+
+        let bounds = self.state.geometry?.rect;
+
+        // The search field's clear button is icon-only, so spell out what it does.
+        if self.state.search_clear_hovered
+            && let Some(clear) = self.search_clear_bounds(bounds)
+        {
+            return Some(MenuTooltip {
+                anchor: clear,
+                label: crate::i18n::select_clear_search().into_owned(),
+                position: tooltip::Position::Above,
+                max_width: tooltip::DEFAULT_MAX_WIDTH,
+            });
+        }
+
+        // Show the full label of a hovered option when it is truncated. The tooltip is placed next
+        // to the menu surface, never on top of the option: covering the option would blend the full
+        // label with the shortened text drawn underneath and spill over the neighbouring rows.
+        let index = self.state.hovered_item?;
+        let label = self.items.get(index)?.label()?;
+
+        if !self.label_is_truncated(renderer, label, bounds) {
+            return None;
+        }
+
+        let row = self.row_bounds(index, bounds)?;
+
+        // Span the whole surface so the tooltip lands beside the menu instead of on its border,
+        // while staying vertically aligned with the hovered row.
+        let anchor = Rectangle::new(
+            Point::new(bounds.x, row.y),
+            Size::new(bounds.width, row.height),
+        );
+
+        Some(MenuTooltip {
+            anchor,
+            label: label.to_owned(),
+            position: tooltip::Position::auto(),
+            max_width: tooltip::DEFAULT_MAX_WIDTH,
+        })
     }
 
     fn item_at(&self, position: Option<Point>, bounds: Rectangle) -> Option<usize> {
@@ -2322,6 +2582,19 @@ where
             }
         }
 
+        // Each row and button is a target of its own, so the delay restarts when the pointer moves
+        // to another option instead of opening the tooltip instantly.
+        let tooltip_target = self.tooltip_target(renderer, bounds);
+
+        self.state.menu_tooltip.update(
+            event,
+            cursor,
+            tooltip_target,
+            self.state.is_open,
+            tooltip::DEFAULT_DELAY,
+            shell,
+        );
+
         match event {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Right)) => {
                 let Some(position) = cursor.position() else {
@@ -2612,19 +2885,23 @@ where
         _layout: Layout<'b>,
         _renderer: &Renderer,
     ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
-        self.state.context_menu?;
+        if self.state.context_menu.is_some() {
+            let style = self.menu_style;
+            let font = self.font;
 
-        let style = self.menu_style;
-        let font = self.font;
+            return Some(overlay::Element::new(Box::new(ContextMenuOverlay {
+                host: SearchContext {
+                    state: &mut *self.state,
+                },
+                style,
+                font,
+                translation: Vector::ZERO,
+            })));
+        }
 
-        Some(overlay::Element::new(Box::new(ContextMenuOverlay {
-            host: SearchContext {
-                state: &mut *self.state,
-            },
-            style,
-            font,
-            translation: Vector::ZERO,
-        })))
+        // Any tooltip for the menu is created by `Select::overlay`, next to the surface instead of
+        // nested inside it. See `hovered_tooltip`.
+        None
     }
 }
 

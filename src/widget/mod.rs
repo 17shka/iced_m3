@@ -29,6 +29,7 @@ pub mod shapes;
 pub mod slider;
 pub mod switch;
 pub mod text_input;
+pub mod tooltip;
 mod wrappers;
 
 pub use common_types::*;
@@ -116,6 +117,7 @@ pub fn fab_menu<'a, I, Message, Theme, Renderer>(
 ) -> FABMenu<'a, Message, Theme, Renderer>
 where
     Message: 'a + Clone,
+    Theme: 'a,
     I: IntoIterator<Item = fab_menu::Item<'a, Message>>,
     Renderer: 'a
         + iced::advanced::text::Renderer
@@ -255,6 +257,18 @@ where
 #[must_use]
 pub fn hybrid_icon<'a>(icon: Icon<'a>, size: impl Into<Pixels>, color: Color) -> HybridIcon<'a> {
     HybridIcon::new(icon, size, color)
+}
+
+/// Shows a short description of another element when it is hovered.
+#[must_use]
+pub fn tooltip<'a, Message, Theme, Renderer>(
+    style: tooltip::Style,
+    base: impl Into<Element<'a, Message, Theme, Renderer>>,
+) -> tooltip::Tooltip<'a, Message, Theme, Renderer>
+where
+    Renderer: 'a + iced::advanced::text::Renderer,
+{
+    tooltip::Tooltip::new(style, base)
 }
 
 #[cfg(feature = "shapes")]

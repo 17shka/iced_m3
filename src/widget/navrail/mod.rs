@@ -4,7 +4,7 @@ use iced::time::Instant;
 
 use iced::{
     Color, Element, Font, Length, Padding, Pixels, Rectangle, Size, Vector,
-    advanced::{Widget, layout::Node, mouse, text, widget::Tree},
+    advanced::{Widget, layout::Node, mouse, overlay, text, widget::Tree},
 };
 
 use crate::{
@@ -17,6 +17,7 @@ use crate::{
         common_icons::{self},
         hybrid_icon::Icon,
         navrail::item::State as ItemState,
+        tooltip,
     },
 };
 
@@ -123,6 +124,7 @@ pub struct Style {
     pub menu_button_style: button::Style,
     pub item_style: ItemStyle,
     pub badge_style: badge::Style,
+    pub tooltip_style: tooltip::Style,
 }
 
 impl Style {
@@ -154,6 +156,7 @@ impl Style {
                 item_style
             },
             badge_style: badge::Style::new(theme),
+            tooltip_style: tooltip::Style::new(theme),
         }
     }
 }
@@ -434,6 +437,14 @@ where
     )
 }
 
+/// The widest label the rail can show, or `None` when the rail sizes itself to its content.
+fn label_max_width(mode: Mode) -> Option<f32> {
+    match mode {
+        Mode::ExpandedAuto => None,
+        mode => Some(mode.width().0),
+    }
+}
+
 /// Builds throwaway item widgets used to measure widths and heights during
 /// layout. They are built once per layout pass and reused for both
 /// measurements.
@@ -464,6 +475,8 @@ where
                     nav_rail.label_font,
                     active,
                     nav_rail.hide_labels_when_collapsed,
+                    label_max_width(nav_rail.mode),
+                    nav_rail.style.tooltip_style,
                 )
                 .motion_scheme_maybe(nav_rail.motion_scheme)
                 .active_transition_spring_maybe(nav_rail.item_active_transition_spring)
@@ -688,7 +701,11 @@ where
                 if !inner_scrollable_tree.children.is_empty() {
                     let column_tree = &mut inner_scrollable_tree.children[0];
                     for item_tree in column_tree.children.iter_mut() {
-                        item_tree.state.downcast_mut::<ItemState>().expansion = expansion;
+                        // Each item is wrapped in a `Tooltip`, so its state lives on the inner
+                        // child tree.
+                        if let Some(inner) = item_tree.children.first_mut() {
+                            inner.state.downcast_mut::<ItemState>().expansion = expansion;
+                        }
                     }
                 }
             }
@@ -895,24 +912,16 @@ where
         if self.menu_visible
             && let Some(menu) = &mut self.menu_button
         {
-            let should_forward = match event {
-                iced::Event::Mouse(_) | iced::Event::Touch(_) => {
-                    cursor.is_over(menu_layout.bounds())
-                }
-                _ => true,
-            };
-            if should_forward {
-                menu.as_widget_mut().update(
-                    &mut tree.children[tree_index],
-                    event,
-                    menu_layout,
-                    cursor,
-                    renderer,
-                    clipboard,
-                    shell,
-                    viewport,
-                );
-            }
+            menu.as_widget_mut().update(
+                &mut tree.children[tree_index],
+                event,
+                menu_layout,
+                cursor,
+                renderer,
+                clipboard,
+                shell,
+                viewport,
+            );
         }
         tree_index += 1;
 
@@ -921,24 +930,16 @@ where
         if self.fab_visible
             && let Some(fab) = &mut self.fab_element
         {
-            let should_forward = match event {
-                iced::Event::Mouse(_) | iced::Event::Touch(_) => {
-                    cursor.is_over(fab_layout.bounds())
-                }
-                _ => true,
-            };
-            if should_forward {
-                fab.as_widget_mut().update(
-                    &mut tree.children[tree_index],
-                    event,
-                    fab_layout,
-                    cursor,
-                    renderer,
-                    clipboard,
-                    shell,
-                    viewport,
-                );
-            }
+            fab.as_widget_mut().update(
+                &mut tree.children[tree_index],
+                event,
+                fab_layout,
+                cursor,
+                renderer,
+                clipboard,
+                shell,
+                viewport,
+            );
         }
         tree_index += 1;
 
@@ -976,6 +977,62 @@ where
             shell.invalidate_layout();
         }
     }
+
+    fn overlay<'b>(
+        &'b mut self,
+        tree: &'b mut Tree,
+        layout: iced::advanced::Layout<'b>,
+        renderer: &Renderer,
+        viewport: &Rectangle,
+        translation: Vector,
+    ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
+        // The children own overlays of their own (the tooltips of the menu button, the FAB and the
+        // items), so they have to be forwarded to the runtime.
+        let mut layouts = layout.children();
+        let menu_layout = layouts.next();
+        let fab_layout = layouts.next();
+        let container_layout = layouts.next();
+
+        let mut states = tree.children.iter_mut();
+        let menu_state = states.next();
+        let fab_state = states.next();
+        let container_state = states.next();
+
+        let mut children: Vec<overlay::Element<'b, Message, Theme, Renderer>> =
+            Vec::with_capacity(3);
+
+        if let (Some(menu), Some(state), Some(layout)) =
+            (self.menu_button.as_mut(), menu_state, menu_layout)
+            && let Some(overlay) =
+                menu.as_widget_mut()
+                    .overlay(state, layout, renderer, viewport, translation)
+        {
+            children.push(overlay);
+        }
+
+        if let (Some(fab), Some(state), Some(layout)) =
+            (self.fab_element.as_mut(), fab_state, fab_layout)
+            && let Some(overlay) =
+                fab.as_widget_mut()
+                    .overlay(state, layout, renderer, viewport, translation)
+        {
+            children.push(overlay);
+        }
+
+        if let (Some(container), Some(state), Some(layout)) = (
+            self.items_container.as_mut(),
+            container_state,
+            container_layout,
+        ) && let Some(overlay) =
+            container
+                .as_widget_mut()
+                .overlay(state, layout, renderer, viewport, translation)
+        {
+            children.push(overlay);
+        }
+
+        (!children.is_empty()).then(|| overlay::Group::with_children(children).overlay())
+    }
 }
 
 impl<'a, Message, Theme, Renderer> From<NavRail<'a, Message, Theme, Renderer>>
@@ -999,7 +1056,7 @@ where
                 common_icons::MENU.clone()
             };
             let button_size = MENU_ICON_SIZE + MENU_BUTTON_PADDING * 2.0;
-            crate::widget::button(
+            let button: Element<'a, Message, Theme, Renderer> = crate::widget::button(
                 value.style.menu_button_style,
                 button::Content::Icon(Icon::Svg(icon)),
             )
@@ -1019,20 +1076,39 @@ where
                 },
             })
             .on_press((on_press)(value.mode))
-            .into()
+            .into();
+
+            let label = if value.mode.is_expanded() {
+                crate::i18n::navrail_collapse_menu()
+            } else {
+                crate::i18n::navrail_expand_menu()
+            };
+
+            widget::tooltip(value.style.tooltip_style, button)
+                .label(text::Fragment::Owned(label.into_owned()))
+                .position(tooltip::Position::Above)
+                .into()
         });
 
         let initial_fab_scale = if value.mode_is_expanded() { 1.0 } else { 0.0 };
         value.fab_element = value.fab.as_ref().map(|fab| {
             let fab_clone = fab.clone();
+            let tooltip_label = (!value.mode_is_expanded()).then(|| fab_clone.label.clone());
             let content = widget::fab::Content::Extended {
                 icon: fab_clone.icon,
                 label: fab_clone.label,
             };
 
-            widget::fab(fab_clone.style, content, fab_clone.on_press)
-                .label_size_scale(initial_fab_scale)
-                .label_font_maybe(value.label_font)
+            let button: Element<'a, Message, Theme, Renderer> =
+                widget::fab(fab_clone.style, content, fab_clone.on_press)
+                    .label_size_scale(initial_fab_scale)
+                    .label_font_maybe(value.label_font)
+                    .into();
+
+            // The label is hidden while collapsed, so surface it as a tooltip.
+            widget::tooltip(value.style.tooltip_style, button)
+                .label_maybe(tooltip_label)
+                .position(tooltip::Position::Right)
                 .into()
         });
 
@@ -1043,18 +1119,29 @@ where
             .enumerate()
             .map(|(index, content)| {
                 let active = index == value.active_index;
-                item::Item::new(
+                let element: Element<'a, Message, Theme, Renderer> = item::Item::new(
                     value.style.item_style,
                     content.clone(),
                     expanded,
                     value.label_font,
                     active,
                     value.hide_labels_when_collapsed,
+                    label_max_width(value.mode),
+                    value.style.tooltip_style,
                 )
                 .motion_scheme_maybe(value.motion_scheme)
                 .active_transition_spring_maybe(value.item_active_transition_spring)
                 .color_spring_maybe(value.item_color_spring)
-                .into()
+                .into();
+
+                // Collapsed rails hide the labels, so spell them out on hover.
+                widget::tooltip(value.style.tooltip_style, element)
+                    .label_maybe(
+                        (!expanded && value.hide_labels_when_collapsed)
+                            .then(|| content.label.clone()),
+                    )
+                    .position(tooltip::Position::Right)
+                    .into()
             })
             .collect();
 

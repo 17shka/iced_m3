@@ -76,7 +76,7 @@ impl Page {
                     font: Some(fonts::icons_outlined()),
                 },
                 badge: Some(Badge { label: None }),
-                label: "Favorites".into(),
+                label: "the absolute best, top-tier favorite".into(),
                 on_press: Message::GoTo(1),
             },
             navrail::Item {

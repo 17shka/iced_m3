@@ -16,7 +16,6 @@ pub enum Message {
     Toggle4,
     Toggle5,
     Toggle6,
-    CycleState,
 }
 
 pub struct Demo {
@@ -26,7 +25,6 @@ pub struct Demo {
     value4: Value,
     value5: Value,
     value6: Value,
-    value8: Value,
 }
 
 impl Default for Demo {
@@ -38,7 +36,6 @@ impl Default for Demo {
             value4: Value::Unchecked,
             value5: Value::Checked,
             value6: Value::Indeterminate,
-            value8: Value::Unchecked,
         }
     }
 }
@@ -52,7 +49,6 @@ impl Demo {
             Message::Toggle4 => self.value4 = self.value4.toggle(),
             Message::Toggle5 => self.value5 = self.value5.toggle(),
             Message::Toggle6 => self.value6 = self.value6.next(),
-            Message::CycleState => self.value8 = self.value8.next(),
         }
     }
 
@@ -78,15 +74,6 @@ impl Demo {
             row![
                 widget::checkbox(theme, self.value3).on_toggle(Message::Toggle3),
                 label("Indeterminate", theme),
-            ]
-            .spacing(12)
-            .align_y(Alignment::Center),
-            row![
-                widget::checkbox(theme, self.value8).on_toggle(Message::CycleState),
-                label(
-                    "State cycler (Unchecked -> Checked -> Indeterminate)",
-                    theme
-                ),
             ]
             .spacing(12)
             .align_y(Alignment::Center),

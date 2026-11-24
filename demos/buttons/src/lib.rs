@@ -4,7 +4,7 @@ use iced::{
     widget::{column, row, text},
 };
 use iced_m3::theme::{Accent, ColorScheme, Theme};
-use iced_m3::widget::{button, hybrid_icon::Icon};
+use iced_m3::widget::{button, hybrid_icon::Icon, tooltip};
 
 #[derive(Clone)]
 pub enum Message {
@@ -125,10 +125,14 @@ impl Page {
             .spacing(8),
             section_header("Icon buttons", theme),
             row![
-                icon_btn(
-                    button::Style::filled(theme, Accent::Primary),
-                    add_icon.clone()
-                ),
+                iced_m3::widget::tooltip(
+                    tooltip::Style::new(theme),
+                    icon_btn(
+                        button::Style::filled(theme, Accent::Primary),
+                        add_icon.clone()
+                    ),
+                )
+                .label("Add"),
                 icon_btn(
                     button::Style::elevated(theme, Accent::Primary),
                     add_icon.clone()

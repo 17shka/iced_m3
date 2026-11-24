@@ -2,8 +2,17 @@ language_name: "English"
 widget:
   dialog:
     title: "Title"
+    close: "Close"
   select:
     search: "Search"
+    clear: "Clear selection"
+    clear_search: "Clear search"
+  navrail:
+    expand_menu: "Expand menu"
+    collapse_menu: "Collapse menu"
+  fab_menu:
+    open_menu: "Open menu"
+    close_menu: "Close menu"
   theme:
     system: "System"
     light: "Light"
@@ -16,3 +25,6 @@ widget:
     paste: "Paste"
     select_word: "Select word"
     select_all: "Select all"
+    clear: "Clear"
+    show_password: "Show password"
+    hide_password: "Hide password"
