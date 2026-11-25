@@ -172,7 +172,7 @@ impl State {
                 .size(24.0)
                 .color(self.theme.on_surface()),
             Space::new().width(Length::Fill),
-            iced_m3::widget::theme_select(&self.theme, self.theme.mode, Message::SetTheme)
+            common::theme_select(&self.theme, self.theme.mode, Message::SetTheme)
                 .width(Length::Fixed(220.0))
         ]
         .align_y(Alignment::Center);

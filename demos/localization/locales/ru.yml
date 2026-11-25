@@ -1,37 +1,48 @@
 app:
+  language_name: "Русский"
   language: "Язык"
   language_placeholder: "Выберите язык"
-  intro: "Переводы предоставляет приложение. iced_m3 поставляет только английский запасной вариант на случай, если фича i18n отключена."
   text_input: "Текстовое поле"
-  text_input_hint: "Нажмите правой кнопкой мыши, чтобы открыть контекстное меню, созданное библиотекой."
   text_placeholder: "Введите текст..."
+  password: "Пароль"
+  password_placeholder: "Пароль"
   select: "Выпадающий список"
   select_placeholder: "Выберите вариант"
   dialog: "Диалог"
   open_dialog: "Открыть диалог"
-  dialog_body: "В этом диалоге используется заголовок по умолчанию, который предоставляет библиотека."
-  dialog_close: "Закрыть"
+  dialog_title: "Удалить файл?"
+  dialog_body: "Что удалить?"
+  dialog_close: "Отмена"
   option:
     alpha: "Альфа"
     beta: "Бета"
     gamma: "Гамма"
 
 iced_m3:
-  language_name: "Русский"
-  widget:
-    dialog:
-      title: "Заголовок"
-    select:
-      search: "Поиск"
-    theme:
-      system: "Системная"
-      light: "Светлая"
-      dark: "Тёмная"
-    text_input:
-      undo: "Отменить"
-      redo: "Повторить"
-      copy: "Копировать"
-      cut: "Вырезать"
-      paste: "Вставить"
-      select_word: "Выделить слово"
-      select_all: "Выделить всё"
+  dialog:
+    close: "Закрыть"
+  select:
+    search: "Поиск"
+    clear: "Очистить выбор"
+    clear_search: "Очистить поиск"
+  navrail:
+    expand_menu: "Развернуть меню"
+    collapse_menu: "Свернуть меню"
+  fab_menu:
+    open_menu: "Открыть меню"
+    close_menu: "Закрыть меню"
+  theme:
+    system: "Системная"
+    light: "Светлая"
+    dark: "Тёмная"
+  text_input:
+    undo: "Отменить"
+    redo: "Повторить"
+    copy: "Копировать"
+    cut: "Вырезать"
+    paste: "Вставить"
+    select_word: "Выделить слово"
+    select_all: "Выделить всё"
+    clear: "Очистить"
+    show_password: "Показать пароль"
+    hide_password: "Скрыть пароль"

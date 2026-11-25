@@ -9,7 +9,10 @@ use iced::{
 };
 use iced_m3::{
     theme::{ColorScheme, Mode, Theme},
-    widget::{scrollable, theme_select},
+    widget::{
+        scrollable,
+        select::{Item, Select},
+    },
 };
 
 pub trait Demo: Default + 'static {
@@ -141,6 +144,29 @@ fn load_fonts<Message: Send + 'static>() -> Task<Message> {
             .into_iter()
             .map(|bytes| iced::font::load(bytes).discard()),
     )
+}
+
+#[must_use]
+pub fn theme_select<'a, Message>(
+    theme: &(impl ColorScheme + ?Sized),
+    selected: Mode,
+    on_selected: impl Fn(Mode) -> Message + 'a,
+) -> Select<'a, Mode, Message>
+where
+    Message: Clone,
+{
+    let items = [
+        (Mode::System, iced_m3::Text::ThemeSystem.english()),
+        (Mode::Light, iced_m3::Text::ThemeLight.english()),
+        (Mode::Dark, iced_m3::Text::ThemeDark.english()),
+    ]
+    .into_iter()
+    .map(|(mode, label)| Item::labelled(mode, label))
+    .collect::<Vec<_>>();
+
+    Select::new(theme, items, Some(selected), move |mode| {
+        on_selected(mode.unwrap_or_default())
+    })
 }
 
 /// A bold section heading used by the demo pages.

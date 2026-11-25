@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 iced = "0.14.0"
-iced_m3 = { path = "../../", features = ["rust-i18n"] }
+iced_m3 = { path = "../../" }
 fonts = { path = "../fonts" }
 common = { path = "../common" }
 rust-i18n = "4"

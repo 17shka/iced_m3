@@ -1,5 +1,4 @@
-use std::borrow::Cow;
-use std::fmt;
+use std::{borrow::Cow, fmt};
 
 use iced::advanced::svg;
 use iced_widget::core::keyboard::{self, key};
@@ -28,18 +27,21 @@ impl Action {
         Self::Redo,
     ];
 
-    pub fn label(self) -> Cow<'static, str> {
-        use crate::i18n;
-
+    pub fn text(self) -> crate::Text {
         match self {
-            Self::Undo => i18n::text_input_undo(),
-            Self::Redo => i18n::text_input_redo(),
-            Self::Copy => i18n::text_input_copy(),
-            Self::Cut => i18n::text_input_cut(),
-            Self::Paste => i18n::text_input_paste(),
-            Self::SelectWord => i18n::text_input_select_word(),
-            Self::SelectAll => i18n::text_input_select_all(),
+            Self::Undo => crate::Text::TextInputUndo,
+            Self::Redo => crate::Text::TextInputRedo,
+            Self::Copy => crate::Text::TextInputCopy,
+            Self::Cut => crate::Text::TextInputCut,
+            Self::Paste => crate::Text::TextInputPaste,
+            Self::SelectWord => crate::Text::TextInputSelectWord,
+            Self::SelectAll => crate::Text::TextInputSelectAll,
         }
+    }
+
+    /// Returns the English label for this action.
+    pub fn label(self) -> Cow<'static, str> {
+        Cow::Borrowed(self.text().english())
     }
 
     pub fn shortcut(self) -> Option<Shortcut> {

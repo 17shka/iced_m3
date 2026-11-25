@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use iced::{
     Border, Color, Event, Point, Radians, Rectangle, Size, Vector,
     advanced::{
@@ -63,6 +65,10 @@ pub(crate) trait ContextMenuHost<Message, Renderer> {
 
     fn menu(&self) -> Option<ContextMenu>;
     fn set_menu(&mut self, menu: Option<ContextMenu>);
+
+    fn label(&self, action: Action) -> Cow<'_, str> {
+        action.label()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -352,7 +358,7 @@ where
 
                     renderer.fill_text(
                         text::Text {
-                            content: item.label().into_owned(),
+                            content: self.host.label(item).into_owned(),
                             bounds: label_bounds.size(),
                             size: menu::constants::ITEM_LABEL_FONT_SIZE,
                             line_height: text::LineHeight::Absolute(

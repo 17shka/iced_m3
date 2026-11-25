@@ -110,6 +110,7 @@ where
     spatial_spring: Option<Spring>,
     effects_spring: Option<Spring>,
     items: Vec<Element<'a, Message, Theme, Renderer>>,
+    labels: Option<crate::text::Translator<'a>>,
 
     // Cache
     style_checked: bool,
@@ -154,6 +155,7 @@ where
             style,
             spatial_spring: None,
             effects_spring: None,
+            labels: None,
             style_checked: false,
         }
     }
@@ -188,6 +190,12 @@ where
     }
 
     crate::macros::maybe_assign!(effects_spring_maybe, effects_spring, Option<Spring>);
+
+    #[must_use]
+    pub fn labels(mut self, translate: impl Fn(crate::Text) -> String + 'a) -> Self {
+        self.labels = Some(std::rc::Rc::new(translate));
+        self
+    }
 }
 
 struct State {
@@ -481,13 +489,15 @@ where
 
         if tooltip_open {
             // The trigger is icon-only, so spell out what pressing it does.
+            let label = if is_expanded {
+                crate::text::resolve(self.labels.as_ref(), crate::Text::FabMenuCloseMenu)
+            } else {
+                crate::text::resolve(self.labels.as_ref(), crate::Text::FabMenuOpenMenu)
+            };
+
             children.push(tooltip::label_overlay(
                 base_bounds,
-                text::Fragment::Owned(if is_expanded {
-                    crate::i18n::fab_menu_close_menu().into_owned()
-                } else {
-                    crate::i18n::fab_menu_open_menu().into_owned()
-                }),
+                text::Fragment::Owned(label.into_owned()),
                 None,
                 self.style.tooltip,
                 tooltip::Position::Above,

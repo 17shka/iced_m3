@@ -99,7 +99,7 @@ pub struct Dialog<'a, Message> {
     style: Style,
     icon: Option<char>,
     icon_font: Option<Font>,
-    title: text::Fragment<'a>,
+    title: Option<text::Fragment<'a>>,
     title_font: Option<Font>,
     body: Element<'a, Message>,
     buttons: Vec<Button<Message>>,
@@ -113,6 +113,7 @@ pub struct Dialog<'a, Message> {
     spring: Option<Spring>,
     scheme: motion::Scheme,
     speed: motion::Speed,
+    labels: Option<crate::text::Translator<'a>>,
 }
 
 impl<'a, Message> Dialog<'a, Message> {
@@ -126,7 +127,7 @@ impl<'a, Message> Dialog<'a, Message> {
             style,
             icon: None,
             icon_font: None,
-            title: crate::i18n::dialog_title(),
+            title: None,
             title_font: None,
             body: body.into(),
             buttons,
@@ -140,6 +141,7 @@ impl<'a, Message> Dialog<'a, Message> {
             spring: None,
             scheme: motion::Scheme::default(),
             speed: motion::Speed::default(),
+            labels: None,
         }
     }
 
@@ -161,7 +163,7 @@ impl<'a, Message> Dialog<'a, Message> {
 
     #[must_use]
     pub fn title(mut self, title: impl IntoFragment<'a>) -> Self {
-        self.title = title.into_fragment();
+        self.title = Some(title.into_fragment());
         self
     }
 
@@ -251,6 +253,12 @@ impl<'a, Message> Dialog<'a, Message> {
     }
 
     crate::macros::maybe_assign!(spring_maybe, spring, Option<Spring>);
+
+    #[must_use]
+    pub fn labels(mut self, translate: impl Fn(crate::Text) -> String + 'a) -> Self {
+        self.labels = Some(std::rc::Rc::new(translate));
+        self
+    }
 }
 
 impl<'a, Message> From<Dialog<'a, Message>> for Element<'a, Message>
@@ -276,6 +284,7 @@ where
             spring,
             scheme,
             speed,
+            labels,
         } = value;
 
         let Style {
@@ -292,10 +301,12 @@ where
         let icon_element =
             maybe_icon.map(|i| icon(i, ICON_SIZE).color(icon_color).font_maybe(icon_font));
 
-        let title_element = iced_widget::text(title)
-            .size(TITLE_SIZE)
-            .color(title_color)
-            .font_maybe(title_font);
+        let title_element = title.map(|title| {
+            iced_widget::text(title)
+                .size(TITLE_SIZE)
+                .color(title_color)
+                .font_maybe(title_font)
+        });
 
         let buttons_present = !buttons.is_empty();
         let buttons = row({
@@ -334,14 +345,15 @@ where
             if let Some(icon_element) = icon_element {
                 header_items.push(icon_element.into());
             }
-            header_items.push(title_element.into());
+            if let Some(title_element) = title_element {
+                header_items.push(title_element.into());
+            }
             header_items.push(space().width(Length::Fill).into());
             if let Some(close_button) = close_button {
+                let close_label = crate::text::resolve(labels.as_ref(), crate::Text::DialogClose);
                 header_items.push(
                     crate::widget::tooltip(tooltip_style, close_button)
-                        .label(text::Fragment::Owned(
-                            crate::i18n::dialog_close().into_owned(),
-                        ))
+                        .label(text::Fragment::Owned(close_label.into_owned()))
                         .into(),
                 );
             }
@@ -382,7 +394,7 @@ where
                 // A little hack to enforce the min width
                 space().width(constants::MIN_WIDTH),
                 icon_element.map(|icon| column![icon, space().height(ICON_TITLE_SPACING)]),
-                column![title_element, space().height(TITLE_BODY_SPACING)],
+                title_element.map(|title| column![title, space().height(TITLE_BODY_SPACING)]),
                 body,
                 buttons_present.then_some(space().height(BODY_BUTTONS_SPACING)),
                 buttons

@@ -16,7 +16,6 @@ num-traits = "0.2.19"
 palette = "0.7.7"
 polymorpher = { version = "0.1.4", optional = true }
 unicode-segmentation = "1.13.3"
-rust-i18n = { version = "4.2.4", optional = true }
 
 [features]
 default = [ "expressive-defaults", "shapes" ]
@@ -27,8 +26,6 @@ pub-internal-const = []
 expressive-defaults = []
 # Material Shapes - requires a dependency so it's optional
 shapes = [ "dep:polymorpher", "iced/canvas" ]
-# Translate the strings built into widgets through rust-i18n
-rust-i18n = [ "dep:rust-i18n" ]
 
 [workspace]
 members = ["demos/*"]

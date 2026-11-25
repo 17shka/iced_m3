@@ -33,22 +33,12 @@ use crate::{
         internal::{focus::Focus as Blink, interaction, placement, scrollbar, text::paragraph},
         menu,
         text_input::{
-            ContextMenu, ContextMenuHost, ContextMenuOverlay, Cursor, EditKind, Editor, History,
-            Value, cursor, edit_value,
+            Action, ContextMenu, ContextMenuHost, ContextMenuOverlay, Cursor, EditKind, Editor,
+            History, Value, cursor, edit_value,
         },
         tooltip,
     },
 };
-
-#[cfg(feature = "rust-i18n")]
-mod language;
-
-#[cfg(feature = "rust-i18n")]
-pub use language::language_select;
-
-mod theme;
-
-pub use theme::theme_select;
 
 pub(crate) mod constants {
     use iced::Pixels;
@@ -176,6 +166,7 @@ where
     item_height: f32,
     max_menu_height: f32,
     font: Option<Font>,
+    labels: Option<crate::text::Translator<'a>>,
 }
 
 /// A single entry of a [`Select`]: either a selectable option or a separator.
@@ -308,12 +299,19 @@ where
             item_height: constants::ITEM_HEIGHT,
             max_menu_height: constants::DEFAULT_MAX_MENU_HEIGHT.0,
             font: None,
+            labels: None,
         }
     }
 
     #[must_use]
     pub fn placeholder(mut self, placeholder: impl Into<String>) -> Self {
         self.placeholder = placeholder.into();
+        self
+    }
+
+    #[must_use]
+    pub fn labels(mut self, translate: impl Fn(crate::Text) -> String + 'a) -> Self {
+        self.labels = Some(Rc::new(translate));
         self
     }
 
@@ -1127,7 +1125,10 @@ where
 
             Some(tooltip::label_overlay(
                 anchor,
-                text::Fragment::Owned(crate::i18n::select_clear().into_owned()),
+                text::Fragment::Owned(
+                    crate::text::resolve(self.labels.as_ref(), crate::Text::SelectClear)
+                        .into_owned(),
+                ),
                 Some(font),
                 self.tooltip_style,
                 tooltip::Position::Above,
@@ -1203,6 +1204,7 @@ where
                 item_text_size: self.item_text_size,
                 max_menu_height: self.max_menu_height,
                 font: self.font,
+                labels: self.labels.clone(),
             };
 
             // The menu's tooltip is a sibling of the surface and not one of its nested overlays:
@@ -1459,6 +1461,7 @@ struct Overlay<'a, T, Message> {
     item_text_size: Pixels,
     max_menu_height: f32,
     font: Option<Font>,
+    labels: Option<crate::text::Translator<'a>>,
 }
 
 /// A tooltip the open menu wants to show, described so `Select::overlay` can draw it outside the
@@ -1759,7 +1762,8 @@ impl<T, Message> Overlay<'_, T, Message> {
         {
             return Some(MenuTooltip {
                 anchor: clear,
-                label: crate::i18n::select_clear_search().into_owned(),
+                label: crate::text::resolve(self.labels.as_ref(), crate::Text::SelectClearSearch)
+                    .into_owned(),
                 position: tooltip::Position::Above,
                 max_width: tooltip::DEFAULT_MAX_WIDTH,
             });
@@ -2331,7 +2335,8 @@ where
 
                 let (content, color, position) = if self.state.query.is_empty() {
                     (
-                        crate::i18n::select_search().into_owned(),
+                        crate::text::resolve(self.labels.as_ref(), crate::Text::SelectSearch)
+                            .into_owned(),
                         self.style.field_placeholder,
                         text_x_base,
                     )
@@ -2988,6 +2993,7 @@ where
             return Some(overlay::Element::new(Box::new(ContextMenuOverlay {
                 host: SearchContext {
                     state: &mut *self.state,
+                    labels: self.labels.clone(),
                 },
                 style,
                 font,
@@ -3004,6 +3010,7 @@ where
 /// Adapts the search field of the select menu to the shared [`ContextMenuHost`].
 struct SearchContext<'a> {
     state: &'a mut State,
+    labels: Option<crate::text::Translator<'a>>,
 }
 
 impl<Message, Renderer> ContextMenuHost<Message, Renderer> for SearchContext<'_> {
@@ -3071,6 +3078,10 @@ impl<Message, Renderer> ContextMenuHost<Message, Renderer> for SearchContext<'_>
 
     fn set_menu(&mut self, menu: Option<ContextMenu>) {
         self.state.context_menu = menu;
+    }
+
+    fn label(&self, action: Action) -> std::borrow::Cow<'_, str> {
+        crate::text::resolve(self.labels.as_ref(), action.text())
     }
 }
 

@@ -73,6 +73,7 @@ where
     clearable: bool,
     tooltip_style: tooltip::Style,
     icon_tooltip: Option<text::Fragment<'a>>,
+    labels: Option<crate::text::Translator<'a>>,
 }
 
 /// The default [`Padding`] of a [`TextInput`].
@@ -262,6 +263,7 @@ where
             clearable: false,
             tooltip_style: tooltip::Style::new(theme),
             icon_tooltip: None,
+            labels: None,
         }
     }
 
@@ -290,6 +292,12 @@ where
     #[must_use]
     pub fn icon_tooltip(mut self, label: impl IntoFragment<'a>) -> Self {
         self.icon_tooltip = Some(label.into_fragment());
+        self
+    }
+
+    #[must_use]
+    pub fn labels(mut self, translate: impl Fn(crate::Text) -> String + 'a) -> Self {
+        self.labels = Some(std::rc::Rc::new(translate));
         self
     }
 
@@ -2023,9 +2031,9 @@ where
             && let Some(bounds) = self.eye_bounds(layout)
         {
             let label = if self.is_secure {
-                crate::i18n::text_input_show_password()
+                crate::text::resolve(self.labels.as_ref(), crate::Text::TextInputShowPassword)
             } else {
-                crate::i18n::text_input_hide_password()
+                crate::text::resolve(self.labels.as_ref(), crate::Text::TextInputHidePassword)
             };
 
             return Some(tooltip::label_overlay(
@@ -2043,9 +2051,11 @@ where
         if state.clear_hover.is_open()
             && let Some(bounds) = self.clear_bounds(layout)
         {
+            let label = crate::text::resolve(self.labels.as_ref(), crate::Text::TextInputClear);
+
             return Some(tooltip::label_overlay(
                 translate(bounds),
-                text::Fragment::Owned(crate::i18n::text_input_clear().into_owned()),
+                text::Fragment::Owned(label.into_owned()),
                 Some(font),
                 self.tooltip_style,
                 tooltip::Position::Above,
@@ -2679,6 +2689,10 @@ where
 
     fn set_menu(&mut self, menu: Option<ContextMenu>) {
         self.state.context_menu = menu;
+    }
+
+    fn label(&self, action: Action) -> std::borrow::Cow<'_, str> {
+        crate::text::resolve(self.input.labels.as_ref(), action.text())
     }
 }
 

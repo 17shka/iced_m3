@@ -1601,7 +1601,6 @@ dependencies = [
  "num-traits",
  "palette",
  "polymorpher",
- "rust-i18n",
  "unicode-segmentation",
 ]
 

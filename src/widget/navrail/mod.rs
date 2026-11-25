@@ -186,6 +186,7 @@ where
     menu_visible: bool,
     fab_visible: bool,
     scrollbar_color: Option<Color>,
+    labels: Option<crate::text::Translator<'a>>,
 
     menu_button: Option<Element<'a, Message, Theme, Renderer>>,
     fab_element: Option<Element<'a, Message, Theme, Renderer>>,
@@ -221,6 +222,7 @@ where
             menu_visible: true,
             fab_visible: true,
             scrollbar_color: None,
+            labels: None,
             menu_button: None,
             fab_element: None,
             item_elements: Vec::new(),
@@ -364,6 +366,12 @@ where
     }
 
     crate::macros::maybe_assign!(expand_spring_maybe, expand_spring, Option<Spring>);
+
+    #[must_use]
+    pub fn labels(mut self, translate: impl Fn(crate::Text) -> String + 'a) -> Self {
+        self.labels = Some(std::rc::Rc::new(translate));
+        self
+    }
 
     fn resolve_expand_spring(&self) -> Option<Spring> {
         match (self.expand_spring, self.motion_scheme) {
@@ -1077,9 +1085,9 @@ where
             .into();
 
             let label = if value.mode.is_expanded() {
-                crate::i18n::navrail_collapse_menu()
+                crate::text::resolve(value.labels.as_ref(), crate::Text::NavRailCollapseMenu)
             } else {
-                crate::i18n::navrail_expand_menu()
+                crate::text::resolve(value.labels.as_ref(), crate::Text::NavRailExpandMenu)
             };
 
             widget::tooltip(value.style.tooltip_style, button)
