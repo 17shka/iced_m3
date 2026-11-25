@@ -9,13 +9,8 @@ pub enum Message {
     Noop,
 }
 
+#[derive(Default)]
 pub struct Page;
-
-impl Default for Page {
-    fn default() -> Self {
-        Self
-    }
-}
 
 impl Page {
     pub fn update(&mut self, _message: Message) {}

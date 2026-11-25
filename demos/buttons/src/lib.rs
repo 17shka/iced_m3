@@ -12,16 +12,9 @@ pub enum Message {
     Noop,
 }
 
+#[derive(Default)]
 pub struct Page {
     button_selected: bool,
-}
-
-impl Default for Page {
-    fn default() -> Self {
-        Self {
-            button_selected: false,
-        }
-    }
 }
 
 impl Page {
