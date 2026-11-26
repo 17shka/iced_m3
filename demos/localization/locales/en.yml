@@ -30,5 +30,11 @@ iced_m3:
     select_all: "Select ALL!!"
   text_input:
     clear: "Reset"
+    show_password: "Show password"
+    hide_password: "Hide password"
   select:
     search: "Find"
+    clear: "Clear selection"
+    clear_search: "Clear search"
+  dialog:
+    close: "Close"
