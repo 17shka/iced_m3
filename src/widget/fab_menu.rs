@@ -15,6 +15,8 @@ use iced::{
     border::Radius,
     touch, window,
 };
+use iced_widget::text::IntoFragment;
+use std::borrow::Cow;
 
 use crate::{
     animation::{
@@ -101,6 +103,21 @@ where
     pub icon: Icon<'a>,
 }
 
+#[derive(Debug, Clone)]
+pub struct Labels<'a> {
+    pub open_menu: text::Fragment<'a>,
+    pub close_menu: text::Fragment<'a>,
+}
+
+impl Default for Labels<'_> {
+    fn default() -> Self {
+        Self {
+            open_menu: Cow::Borrowed("Open menu"),
+            close_menu: Cow::Borrowed("Close menu"),
+        }
+    }
+}
+
 pub struct FABMenu<'a, Message, Theme, Renderer>
 where
     Message: Clone,
@@ -110,7 +127,7 @@ where
     spatial_spring: Option<Spring>,
     effects_spring: Option<Spring>,
     items: Vec<Element<'a, Message, Theme, Renderer>>,
-    labels: Option<crate::text::Translator<'a>>,
+    labels: Labels<'a>,
 
     // Cache
     style_checked: bool,
@@ -155,7 +172,7 @@ where
             style,
             spatial_spring: None,
             effects_spring: None,
-            labels: None,
+            labels: Labels::default(),
             style_checked: false,
         }
     }
@@ -192,8 +209,20 @@ where
     crate::macros::maybe_assign!(effects_spring_maybe, effects_spring, Option<Spring>);
 
     #[must_use]
-    pub fn labels(mut self, translate: impl Fn(crate::Text) -> String + 'a) -> Self {
-        self.labels = Some(std::rc::Rc::new(translate));
+    pub fn labels(mut self, labels: Labels<'a>) -> Self {
+        self.labels = labels;
+        self
+    }
+
+    #[must_use]
+    pub fn open_menu_label(mut self, label: impl IntoFragment<'a>) -> Self {
+        self.labels.open_menu = label.into_fragment();
+        self
+    }
+
+    #[must_use]
+    pub fn close_menu_label(mut self, label: impl IntoFragment<'a>) -> Self {
+        self.labels.close_menu = label.into_fragment();
         self
     }
 }
@@ -490,14 +519,14 @@ where
         if tooltip_open {
             // The trigger is icon-only, so spell out what pressing it does.
             let label = if is_expanded {
-                crate::text::resolve(self.labels.as_ref(), crate::Text::FabMenuCloseMenu)
+                self.labels.close_menu.clone()
             } else {
-                crate::text::resolve(self.labels.as_ref(), crate::Text::FabMenuOpenMenu)
+                self.labels.open_menu.clone()
             };
 
             children.push(tooltip::label_overlay(
                 base_bounds,
-                text::Fragment::Owned(label.into_owned()),
+                label,
                 None,
                 self.style.tooltip,
                 tooltip::Position::Above,

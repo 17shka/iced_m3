@@ -19,23 +19,7 @@ app:
     gamma: "Гамма"
 
 iced_m3:
-  dialog:
-    close: "Закрыть"
-  select:
-    search: "Поиск"
-    clear: "Очистить выбор"
-    clear_search: "Очистить поиск"
-  navrail:
-    expand_menu: "Развернуть меню"
-    collapse_menu: "Свернуть меню"
-  fab_menu:
-    open_menu: "Открыть меню"
-    close_menu: "Закрыть меню"
-  theme:
-    system: "Системная"
-    light: "Светлая"
-    dark: "Тёмная"
-  text_input:
+  actions:
     undo: "Отменить"
     redo: "Повторить"
     copy: "Копировать"
@@ -43,6 +27,13 @@ iced_m3:
     paste: "Вставить"
     select_word: "Выделить слово"
     select_all: "Выделить всё"
+  text_input:
     clear: "Очистить"
     show_password: "Показать пароль"
     hide_password: "Скрыть пароль"
+  select:
+    search: "Поиск"
+    clear: "Очистить выбор"
+    clear_search: "Очистить поиск"
+  dialog:
+    close: "Закрыть"

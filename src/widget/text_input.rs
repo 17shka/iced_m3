@@ -5,7 +5,7 @@ mod value;
 
 pub mod cursor;
 
-pub use action::{Action, Shortcut};
+pub use action::{Action, ActionLabels, Shortcut};
 pub use cursor::Cursor;
 use iced::advanced::svg;
 use iced::border::Radius;
@@ -43,6 +43,26 @@ use crate::theme::ColorScheme;
 use crate::widget::internal::focus::Focus;
 use crate::widget::{common_icons, menu, tooltip};
 use iced_widget::text::IntoFragment;
+use std::borrow::Cow;
+
+#[derive(Debug, Clone)]
+pub struct Labels<'a> {
+    pub clear: text::Fragment<'a>,
+    pub show_password: text::Fragment<'a>,
+    pub hide_password: text::Fragment<'a>,
+    pub actions: ActionLabels<'a>,
+}
+
+impl Default for Labels<'_> {
+    fn default() -> Self {
+        Self {
+            clear: Cow::Borrowed("Clear"),
+            show_password: Cow::Borrowed("Show password"),
+            hide_password: Cow::Borrowed("Hide password"),
+            actions: ActionLabels::default(),
+        }
+    }
+}
 
 pub struct TextInput<'a, Message, Theme = iced_widget::Theme, Renderer = iced_widget::Renderer>
 where
@@ -73,7 +93,7 @@ where
     clearable: bool,
     tooltip_style: tooltip::Style,
     icon_tooltip: Option<text::Fragment<'a>>,
-    labels: Option<crate::text::Translator<'a>>,
+    labels: Labels<'a>,
 }
 
 /// The default [`Padding`] of a [`TextInput`].
@@ -263,7 +283,7 @@ where
             clearable: false,
             tooltip_style: tooltip::Style::new(theme),
             icon_tooltip: None,
-            labels: None,
+            labels: Labels::default(),
         }
     }
 
@@ -296,8 +316,32 @@ where
     }
 
     #[must_use]
-    pub fn labels(mut self, translate: impl Fn(crate::Text) -> String + 'a) -> Self {
-        self.labels = Some(std::rc::Rc::new(translate));
+    pub fn labels(mut self, labels: Labels<'a>) -> Self {
+        self.labels = labels;
+        self
+    }
+
+    #[must_use]
+    pub fn clear_label(mut self, label: impl IntoFragment<'a>) -> Self {
+        self.labels.clear = label.into_fragment();
+        self
+    }
+
+    #[must_use]
+    pub fn show_password_label(mut self, label: impl IntoFragment<'a>) -> Self {
+        self.labels.show_password = label.into_fragment();
+        self
+    }
+
+    #[must_use]
+    pub fn hide_password_label(mut self, label: impl IntoFragment<'a>) -> Self {
+        self.labels.hide_password = label.into_fragment();
+        self
+    }
+
+    #[must_use]
+    pub fn action_label(mut self, action: Action, label: impl IntoFragment<'a>) -> Self {
+        self.labels.actions.set(action, label);
         self
     }
 
@@ -2031,14 +2075,14 @@ where
             && let Some(bounds) = self.eye_bounds(layout)
         {
             let label = if self.is_secure {
-                crate::text::resolve(self.labels.as_ref(), crate::Text::TextInputShowPassword)
+                self.labels.show_password.clone()
             } else {
-                crate::text::resolve(self.labels.as_ref(), crate::Text::TextInputHidePassword)
+                self.labels.hide_password.clone()
             };
 
             return Some(tooltip::label_overlay(
                 translate(bounds),
-                text::Fragment::Owned(label.into_owned()),
+                label,
                 Some(font),
                 self.tooltip_style,
                 tooltip::Position::Above,
@@ -2051,11 +2095,11 @@ where
         if state.clear_hover.is_open()
             && let Some(bounds) = self.clear_bounds(layout)
         {
-            let label = crate::text::resolve(self.labels.as_ref(), crate::Text::TextInputClear);
+            let label = self.labels.clear.clone();
 
             return Some(tooltip::label_overlay(
                 translate(bounds),
-                text::Fragment::Owned(label.into_owned()),
+                label,
                 Some(font),
                 self.tooltip_style,
                 tooltip::Position::Above,
@@ -2692,7 +2736,7 @@ where
     }
 
     fn label(&self, action: Action) -> std::borrow::Cow<'_, str> {
-        crate::text::resolve(self.input.labels.as_ref(), action.text())
+        std::borrow::Cow::Borrowed(self.input.labels.actions.get(action))
     }
 }
 

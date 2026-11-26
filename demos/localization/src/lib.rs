@@ -4,28 +4,16 @@ use iced::{
     Element, Length,
     widget::{column, stack, text},
 };
-use iced_m3::Text;
 use iced_m3::theme::{Accent, ColorScheme, Theme};
 use iced_m3::widget::{
     self, button, dialog,
-    select::{Item, Select},
-    text_input::TextInput,
+    select::{self, Item, Select},
+    text_input::{self, ActionLabels, TextInput},
 };
 use rust_i18n::t;
 
 pub fn init() {
     rust_i18n::set_locale("en");
-}
-
-fn tr(text: Text) -> String {
-    let key = format!("iced_m3.{}", text.key());
-    let translated = t!(key.as_str());
-
-    if *translated == key {
-        text.english().to_owned()
-    } else {
-        translated.into_owned()
-    }
 }
 
 #[derive(Clone)]
@@ -105,6 +93,22 @@ impl Page {
             Item::labelled(2u8, t!("app.option.gamma").into_owned()),
         ];
 
+        let actions = action_labels();
+
+        let input_labels = text_input::Labels {
+            clear: t!("iced_m3.text_input.clear"),
+            show_password: t!("iced_m3.text_input.show_password"),
+            hide_password: t!("iced_m3.text_input.hide_password"),
+            actions: actions.clone(),
+        };
+
+        let select_labels = select::Labels {
+            search: t!("iced_m3.select.search"),
+            clear: t!("iced_m3.select.clear"),
+            clear_search: t!("iced_m3.select.clear_search"),
+            actions,
+        };
+
         let content = column![
             heading(theme, t!("app.language")),
             self.language_select(theme),
@@ -112,21 +116,21 @@ impl Page {
             TextInput::new(&text_placeholder, &self.text, theme)
                 .on_input(Message::TextChanged)
                 .clearable(true)
-                .labels(tr)
+                .labels(input_labels.clone())
                 .width(Length::Fixed(320.0)),
             heading(theme, t!("app.password")),
             TextInput::new(&password_placeholder, &self.password, theme)
                 .on_input(Message::PasswordChanged)
                 .secure(!self.password_visible)
                 .on_toggle_secure(Message::TogglePasswordVisible)
-                .labels(tr)
+                .labels(input_labels)
                 .width(Length::Fixed(320.0)),
             heading(theme, t!("app.select")),
             widget::select(theme, options, self.option, Message::OptionSelected)
                 .placeholder(t!("app.select_placeholder").into_owned())
                 .searchable(true)
                 .clearable(true)
-                .labels(tr)
+                .labels(select_labels)
                 .width(Length::Fixed(280.0)),
             heading(theme, t!("app.dialog")),
             filled_button(theme, t!("app.open_dialog"), Message::ToggleDialog),
@@ -143,7 +147,9 @@ impl Page {
             }],
         )
         .title(t!("app.dialog_title").into_owned())
-        .labels(tr)
+        .labels(dialog::Labels {
+            close: t!("iced_m3.dialog.close"),
+        })
         .on_press_outside(Message::CloseDialog)
         .open(self.dialog_open);
 
@@ -180,6 +186,18 @@ fn filled_button<'a>(
     .into()
 }
 
+fn action_labels<'a>() -> ActionLabels<'a> {
+    ActionLabels {
+        undo: t!("iced_m3.actions.undo"),
+        redo: t!("iced_m3.actions.redo"),
+        copy: t!("iced_m3.actions.copy"),
+        cut: t!("iced_m3.actions.cut"),
+        paste: t!("iced_m3.actions.paste"),
+        select_word: t!("iced_m3.actions.select_word"),
+        select_all: t!("iced_m3.actions.select_all"),
+    }
+}
+
 /// Every bundled locale, labelled in its own language.
 fn language_items() -> Vec<Item<String>> {
     rust_i18n::available_locales!()
@@ -196,23 +214,33 @@ common::demo!(Page, Message, "Localization Demo");
 #[cfg(test)]
 mod tests {
     use super::*;
+    use iced_m3::widget::text_input::Action;
     use std::sync::Once;
 
     static INIT: Once = Once::new();
 
     #[test]
-    fn library_text_uses_the_application_locales() {
+    fn widget_text_follows_the_application_locales() {
         INIT.call_once(init);
 
-        assert_eq!(tr(Text::SelectSearch), "Find");
-        assert_eq!(tr(Text::FabMenuOpenMenu), "Open menu");
+        assert_eq!(t!("iced_m3.select.search").as_ref(), "Find");
+        assert_eq!(t!("iced_m3.text_input.clear").as_ref(), "Reset");
+        assert_eq!(t!("iced_m3.dialog.close").as_ref(), "Close");
 
         rust_i18n::set_locale("ru");
-        assert_eq!(tr(Text::TextInputCopy), "Копировать");
-        assert_eq!(tr(Text::SelectSearch), "Поиск");
+        assert_eq!(t!("iced_m3.actions.copy").as_ref(), "Копировать");
+        assert_eq!(t!("iced_m3.select.search").as_ref(), "Поиск");
+        assert_eq!(t!("iced_m3.dialog.close").as_ref(), "Закрыть");
+
+        let labels = action_labels();
+        assert_eq!(labels.get(Action::Copy), "Копировать");
+        assert_eq!(labels.get(Action::SelectAll), "Выделить всё");
 
         rust_i18n::set_locale("en");
-        assert_eq!(tr(Text::SelectSearch), "Find");
+        assert_eq!(t!("iced_m3.select.search").as_ref(), "Find");
+
+        let labels = action_labels();
+        assert_eq!(labels.get(Action::Copy), "Copy");
     }
 
     #[test]

@@ -1,7 +1,8 @@
 use std::{borrow::Cow, fmt};
 
-use iced::advanced::svg;
+use iced::advanced::{svg, text::Fragment};
 use iced_widget::core::keyboard::{self, key};
+use iced_widget::text::IntoFragment;
 
 use crate::widget::common_icons;
 
@@ -27,21 +28,16 @@ impl Action {
         Self::Redo,
     ];
 
-    pub fn text(self) -> crate::Text {
+    pub fn label(self) -> &'static str {
         match self {
-            Self::Undo => crate::Text::TextInputUndo,
-            Self::Redo => crate::Text::TextInputRedo,
-            Self::Copy => crate::Text::TextInputCopy,
-            Self::Cut => crate::Text::TextInputCut,
-            Self::Paste => crate::Text::TextInputPaste,
-            Self::SelectWord => crate::Text::TextInputSelectWord,
-            Self::SelectAll => crate::Text::TextInputSelectAll,
+            Self::Undo => "Undo",
+            Self::Redo => "Redo",
+            Self::Copy => "Copy",
+            Self::Cut => "Cut",
+            Self::Paste => "Paste",
+            Self::SelectWord => "Select word",
+            Self::SelectAll => "Select all",
         }
-    }
-
-    /// Returns the English label for this action.
-    pub fn label(self) -> Cow<'static, str> {
-        Cow::Borrowed(self.text().english())
     }
 
     pub fn shortcut(self) -> Option<Shortcut> {
@@ -74,6 +70,61 @@ impl Action {
             Self::Paste => common_icons::PASTE.clone(),
             Self::SelectWord => common_icons::SELECT_WORD.clone(),
             Self::SelectAll => common_icons::SELECT_ALL.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ActionLabels<'a> {
+    pub undo: Fragment<'a>,
+    pub redo: Fragment<'a>,
+    pub copy: Fragment<'a>,
+    pub cut: Fragment<'a>,
+    pub paste: Fragment<'a>,
+    pub select_word: Fragment<'a>,
+    pub select_all: Fragment<'a>,
+}
+
+impl Default for ActionLabels<'_> {
+    fn default() -> Self {
+        Self {
+            undo: Cow::Borrowed(Action::Undo.label()),
+            redo: Cow::Borrowed(Action::Redo.label()),
+            copy: Cow::Borrowed(Action::Copy.label()),
+            cut: Cow::Borrowed(Action::Cut.label()),
+            paste: Cow::Borrowed(Action::Paste.label()),
+            select_word: Cow::Borrowed(Action::SelectWord.label()),
+            select_all: Cow::Borrowed(Action::SelectAll.label()),
+        }
+    }
+}
+
+impl<'a> ActionLabels<'a> {
+    pub fn get(&self, action: Action) -> &str {
+        match action {
+            Action::Undo => self.undo.as_ref(),
+            Action::Redo => self.redo.as_ref(),
+            Action::Copy => self.copy.as_ref(),
+            Action::Cut => self.cut.as_ref(),
+            Action::Paste => self.paste.as_ref(),
+            Action::SelectWord => self.select_word.as_ref(),
+            Action::SelectAll => self.select_all.as_ref(),
+        }
+    }
+
+    pub fn set(&mut self, action: Action, label: impl IntoFragment<'a>) {
+        *self.field_mut(action) = label.into_fragment();
+    }
+
+    fn field_mut(&mut self, action: Action) -> &mut Fragment<'a> {
+        match action {
+            Action::Undo => &mut self.undo,
+            Action::Redo => &mut self.redo,
+            Action::Copy => &mut self.copy,
+            Action::Cut => &mut self.cut,
+            Action::Paste => &mut self.paste,
+            Action::SelectWord => &mut self.select_word,
+            Action::SelectAll => &mut self.select_all,
         }
     }
 }
@@ -176,6 +227,30 @@ mod tests {
     fn every_action_has_a_label() {
         for action in Action::ALL {
             assert!(!action.label().is_empty());
+        }
+    }
+
+    #[test]
+    fn action_labels_default_to_the_english_names() {
+        let labels = ActionLabels::default();
+
+        for action in Action::ALL {
+            assert_eq!(labels.get(action), action.label());
+        }
+    }
+
+    #[test]
+    fn action_labels_override_a_single_action() {
+        let mut labels = ActionLabels::default();
+        labels.set(Action::Copy, "Копировать");
+
+        assert_eq!(labels.get(Action::Copy), "Копировать");
+
+        for action in Action::ALL
+            .into_iter()
+            .filter(|action| *action != Action::Copy)
+        {
+            assert_eq!(labels.get(action), action.label());
         }
     }
 

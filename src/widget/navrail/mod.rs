@@ -6,6 +6,8 @@ use iced::{
     Color, Element, Font, Length, Padding, Pixels, Rectangle, Size, Vector,
     advanced::{Widget, layout::Node, mouse, overlay, text, widget::Tree},
 };
+use iced_widget::text::IntoFragment;
+use std::borrow::Cow;
 
 use crate::{
     animation::motion::{self, Spring, SpringValue, default_spatial},
@@ -161,6 +163,21 @@ impl Style {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Labels<'a> {
+    pub expand_menu: text::Fragment<'a>,
+    pub collapse_menu: text::Fragment<'a>,
+}
+
+impl Default for Labels<'_> {
+    fn default() -> Self {
+        Self {
+            expand_menu: Cow::Borrowed("Expand menu"),
+            collapse_menu: Cow::Borrowed("Collapse menu"),
+        }
+    }
+}
+
 pub struct NavRail<'a, Message, Theme, Renderer>
 where
     Message: 'a + Clone,
@@ -186,7 +203,7 @@ where
     menu_visible: bool,
     fab_visible: bool,
     scrollbar_color: Option<Color>,
-    labels: Option<crate::text::Translator<'a>>,
+    labels: Labels<'a>,
 
     menu_button: Option<Element<'a, Message, Theme, Renderer>>,
     fab_element: Option<Element<'a, Message, Theme, Renderer>>,
@@ -222,7 +239,7 @@ where
             menu_visible: true,
             fab_visible: true,
             scrollbar_color: None,
-            labels: None,
+            labels: Labels::default(),
             menu_button: None,
             fab_element: None,
             item_elements: Vec::new(),
@@ -368,8 +385,20 @@ where
     crate::macros::maybe_assign!(expand_spring_maybe, expand_spring, Option<Spring>);
 
     #[must_use]
-    pub fn labels(mut self, translate: impl Fn(crate::Text) -> String + 'a) -> Self {
-        self.labels = Some(std::rc::Rc::new(translate));
+    pub fn labels(mut self, labels: Labels<'a>) -> Self {
+        self.labels = labels;
+        self
+    }
+
+    #[must_use]
+    pub fn expand_menu_label(mut self, label: impl IntoFragment<'a>) -> Self {
+        self.labels.expand_menu = label.into_fragment();
+        self
+    }
+
+    #[must_use]
+    pub fn collapse_menu_label(mut self, label: impl IntoFragment<'a>) -> Self {
+        self.labels.collapse_menu = label.into_fragment();
         self
     }
 
@@ -1085,13 +1114,13 @@ where
             .into();
 
             let label = if value.mode.is_expanded() {
-                crate::text::resolve(value.labels.as_ref(), crate::Text::NavRailCollapseMenu)
+                value.labels.collapse_menu.clone()
             } else {
-                crate::text::resolve(value.labels.as_ref(), crate::Text::NavRailExpandMenu)
+                value.labels.expand_menu.clone()
             };
 
             widget::tooltip(value.style.tooltip_style, button)
-                .label(text::Fragment::Owned(label.into_owned()))
+                .label(label)
                 .position(tooltip::Position::Above)
                 .into()
         });

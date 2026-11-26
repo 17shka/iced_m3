@@ -14,6 +14,7 @@ use iced::{
     touch,
 };
 use iced_widget::{column, container, row, space, text::IntoFragment};
+use std::borrow::Cow;
 
 use crate::{
     animation::motion::{self, Spring, SpringValue},
@@ -95,6 +96,19 @@ impl Style {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Labels<'a> {
+    pub close: text::Fragment<'a>,
+}
+
+impl Default for Labels<'_> {
+    fn default() -> Self {
+        Self {
+            close: Cow::Borrowed("Close"),
+        }
+    }
+}
+
 pub struct Dialog<'a, Message> {
     style: Style,
     icon: Option<char>,
@@ -113,7 +127,7 @@ pub struct Dialog<'a, Message> {
     spring: Option<Spring>,
     scheme: motion::Scheme,
     speed: motion::Speed,
-    labels: Option<crate::text::Translator<'a>>,
+    labels: Labels<'a>,
 }
 
 impl<'a, Message> Dialog<'a, Message> {
@@ -141,7 +155,7 @@ impl<'a, Message> Dialog<'a, Message> {
             spring: None,
             scheme: motion::Scheme::default(),
             speed: motion::Speed::default(),
-            labels: None,
+            labels: Labels::default(),
         }
     }
 
@@ -255,8 +269,14 @@ impl<'a, Message> Dialog<'a, Message> {
     crate::macros::maybe_assign!(spring_maybe, spring, Option<Spring>);
 
     #[must_use]
-    pub fn labels(mut self, translate: impl Fn(crate::Text) -> String + 'a) -> Self {
-        self.labels = Some(std::rc::Rc::new(translate));
+    pub fn labels(mut self, labels: Labels<'a>) -> Self {
+        self.labels = labels;
+        self
+    }
+
+    #[must_use]
+    pub fn close_label(mut self, label: impl IntoFragment<'a>) -> Self {
+        self.labels.close = label.into_fragment();
         self
     }
 }
@@ -350,10 +370,9 @@ where
             }
             header_items.push(space().width(Length::Fill).into());
             if let Some(close_button) = close_button {
-                let close_label = crate::text::resolve(labels.as_ref(), crate::Text::DialogClose);
                 header_items.push(
                     crate::widget::tooltip(tooltip_style, close_button)
-                        .label(text::Fragment::Owned(close_label.into_owned()))
+                        .label(labels.close)
                         .into(),
                 );
             }

@@ -156,9 +156,9 @@ where
     Message: Clone,
 {
     let items = [
-        (Mode::System, iced_m3::Text::ThemeSystem.english()),
-        (Mode::Light, iced_m3::Text::ThemeLight.english()),
-        (Mode::Dark, iced_m3::Text::ThemeDark.english()),
+        (Mode::System, "System"),
+        (Mode::Light, "Light"),
+        (Mode::Dark, "Dark"),
     ]
     .into_iter()
     .map(|(mode, label)| Item::labelled(mode, label))

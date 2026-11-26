@@ -67,7 +67,7 @@ pub(crate) trait ContextMenuHost<Message, Renderer> {
     fn set_menu(&mut self, menu: Option<ContextMenu>);
 
     fn label(&self, action: Action) -> Cow<'_, str> {
-        action.label()
+        Cow::Borrowed(action.label())
     }
 }
 
@@ -113,6 +113,53 @@ where
     }
 }
 
+fn entry_height(entry: ContextMenuEntry) -> f32 {
+    match entry {
+        ContextMenuEntry::Item(_) => menu::constants::ITEM_HEIGHT.0,
+        ContextMenuEntry::Separator => menu::constants::SPACER_HEIGHT.0,
+    }
+}
+
+fn menu_size() -> Size {
+    let padding = menu::constants::MENU_GROUP_PADDING.0;
+    let spacing = menu::constants::MENU_ITEM_SPACING.0;
+
+    let rows = CONTEXT_MENU_ENTRIES
+        .iter()
+        .map(|entry| entry_height(*entry) + spacing)
+        .sum::<f32>();
+
+    Size::new(
+        menu::constants::DEFAULT_WIDTH.0,
+        padding + rows - spacing + padding,
+    )
+}
+
+fn menu_children() -> Vec<layout::Node> {
+    let padding = menu::constants::MENU_GROUP_PADDING.0;
+    let spacing = menu::constants::MENU_ITEM_SPACING.0;
+    let width = menu_size().width - 2.0 * padding;
+
+    let mut offset_y = padding;
+
+    CONTEXT_MENU_ENTRIES
+        .iter()
+        .map(|entry| {
+            let height = entry_height(*entry);
+
+            let node =
+                layout::Node::new(Size::new(width, height)).move_to(Point::new(padding, offset_y));
+
+            offset_y += height + spacing;
+            node
+        })
+        .collect()
+}
+
+fn is_menu_layout(layout: Layout<'_>) -> bool {
+    layout.children().len() == CONTEXT_MENU_ENTRIES.len() && layout.bounds().size() == menu_size()
+}
+
 fn item_at(layout: Layout<'_>, position: Point) -> Option<Action> {
     layout
         .children()
@@ -129,6 +176,10 @@ where
 {
     host.set_menu(None);
     shell.request_redraw();
+
+    // The overlay disappears outside of the runtime's relayout pass. Ask for one so the other
+    // overlays sharing the group are not drawn with our layout node for this frame.
+    shell.invalidate_layout();
 }
 
 fn perform<H, Message, Renderer>(
@@ -199,28 +250,7 @@ where
     Renderer: text::Renderer + svg::Renderer,
 {
     fn layout(&mut self, _renderer: &Renderer, bounds: Size) -> layout::Node {
-        let width = menu::constants::DEFAULT_WIDTH.0;
-        let padding = menu::constants::MENU_GROUP_PADDING.0;
-        let spacing = menu::constants::MENU_ITEM_SPACING.0;
-
-        let mut children = Vec::with_capacity(CONTEXT_MENU_ENTRIES.len());
-        let mut offset_y = padding;
-
-        for entry in CONTEXT_MENU_ENTRIES {
-            let height = match entry {
-                ContextMenuEntry::Item(_) => menu::constants::ITEM_HEIGHT.0,
-                ContextMenuEntry::Separator => menu::constants::SPACER_HEIGHT.0,
-            };
-
-            children.push(
-                layout::Node::new(Size::new(width - 2.0 * padding, height))
-                    .move_to(Point::new(padding, offset_y)),
-            );
-
-            offset_y += height + spacing;
-        }
-
-        let size = Size::new(width, offset_y - spacing + padding);
+        let size = menu_size();
         let position = self
             .host
             .menu()
@@ -229,7 +259,7 @@ where
             })
             .unwrap_or(Point::ORIGIN);
 
-        layout::Node::with_children(size, children).move_to(position)
+        layout::Node::with_children(size, menu_children()).move_to(position)
     }
 
     fn draw(
@@ -240,7 +270,15 @@ where
         layout: Layout<'_>,
         cursor: mouse::Cursor,
     ) {
+        if !is_menu_layout(layout) {
+            // A stale node from another overlay; see `is_menu_layout`.
+            return;
+        }
+
         let bounds = layout.bounds();
+
+        let font = self.font.unwrap_or_else(|| renderer.default_font());
+        let pressed = self.host.menu().and_then(|menu| menu.pressed);
 
         renderer.fill_quad(
             renderer::Quad {
@@ -252,12 +290,8 @@ where
             self.style.container_color,
         );
 
-        let font = self.font.unwrap_or_else(|| renderer.default_font());
-        let pressed = self.host.menu().and_then(|menu| menu.pressed);
-        let mut children = layout.children();
-
-        for entry in CONTEXT_MENU_ENTRIES {
-            let child_bounds = children.next().unwrap().bounds();
+        for (entry, child) in CONTEXT_MENU_ENTRIES.into_iter().zip(layout.children()) {
+            let child_bounds = child.bounds();
 
             match entry {
                 ContextMenuEntry::Separator => {
@@ -545,6 +579,18 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn menu_layout_is_recognised() {
+        let menu = layout::Node::with_children(menu_size(), menu_children());
+
+        assert!(is_menu_layout(Layout::new(&menu)));
+
+        // A leaf node is what a foreign overlay (like a select popup) provides.
+        assert!(!is_menu_layout(Layout::new(
+            &layout::Node::new(menu_size())
+        )));
+    }
 
     #[test]
     fn context_menu_lists_edit_and_selection_items() {
