@@ -445,10 +445,8 @@ where
 
         let mut node_size = Size::new(node_width, node_height);
         if let Some(node) = badge_node {
-            if self.expanded {
-                if expanded_badge_right > node_size.width {
-                    node_size.width = expanded_badge_right + INDICATOR_LARGE_PADDING;
-                }
+            if self.expanded && expanded_badge_right > node_size.width {
+                node_size.width = expanded_badge_right + INDICATOR_LARGE_PADDING;
             }
 
             children.push(node);
