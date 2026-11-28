@@ -13,6 +13,7 @@ use iced::{
         mouse,
         renderer::Quad,
     },
+    border::Radius,
 };
 
 use crate::{
@@ -28,7 +29,7 @@ use crate::{
             interaction,
             motion::{sync_spring_model, sync_style_spring},
         },
-        ripple::{Ripple, state_layer_overlay},
+        ripple::Ripple,
     },
 };
 
@@ -282,6 +283,14 @@ where
             Color::TRANSPARENT,
         );
 
+        state.ripple.draw(
+            renderer,
+            centered_square(bounds, STATE_LAYER_SIZE),
+            Radius::from(f32::MAX),
+            *self.style.state_layer(self.selected),
+            self.on_select.is_some(),
+        );
+
         let fill = state.fill.value().clamp(0.0, 1.0);
 
         if fill <= 0.0 {
@@ -316,7 +325,12 @@ where
         _viewport: &iced::Rectangle,
         _renderer: &Renderer,
     ) -> mouse::Interaction {
-        interaction::pointer_when(self.on_select.is_some(), cursor, layout.bounds())
+        interaction::pointer_when(
+            self.on_select.is_some(),
+            cursor,
+            layout.bounds(),
+            mouse::Interaction::Pointer,
+        )
     }
 
     fn update(
@@ -382,28 +396,6 @@ where
             self.on_select.as_ref(),
             shell,
         );
-    }
-
-    fn overlay<'b>(
-        &'b mut self,
-        tree: &'b mut iced::advanced::widget::Tree,
-        layout: iced::advanced::Layout<'b>,
-        _renderer: &Renderer,
-        viewport: &iced::Rectangle,
-        translation: iced::Vector,
-    ) -> Option<iced::advanced::overlay::Element<'b, Message, Theme, Renderer>> {
-        let state = tree.state.downcast_ref::<State>();
-        let bounds = layout.bounds();
-        let enabled = self.on_select.is_some();
-
-        state_layer_overlay(
-            state.ripple,
-            *self.style.state_layer(self.selected),
-            centered_square(bounds, STATE_LAYER_SIZE),
-            translation,
-            viewport,
-            enabled,
-        )
     }
 }
 

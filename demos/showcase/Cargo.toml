@@ -24,5 +24,4 @@ radio_demo = { path = "../radio" }
 switch = { path = "../switch" }
 shapes_demo = { path = "../shapes" }
 select_demo = { path = "../select" }
-localization = { path = "../localization" }
 common = { path = "../common" }

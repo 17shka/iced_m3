@@ -74,6 +74,67 @@ impl<Font: PartialEq, P> CachedParagraph<Font, P> {
     }
 }
 
+pub fn fit_label<Renderer>(
+    renderer: &Renderer,
+    content: &str,
+    max_width: f32,
+    size: Pixels,
+    line_height: text::LineHeight,
+    font: Option<Renderer::Font>,
+    align_y: Vertical,
+) -> (String, bool, Renderer::Paragraph)
+where
+    Renderer: text::Renderer,
+{
+    let make_paragraph = |content: &str| {
+        paragraph(
+            renderer,
+            content,
+            Size::INFINITE,
+            size,
+            line_height,
+            font,
+            align_y,
+        )
+    };
+
+    let (fitted, truncated) =
+        crate::widget::internal::elide::elide(content, max_width, |candidate| {
+            make_paragraph(candidate).min_bounds().width
+        });
+    let paragraph = if truncated {
+        make_paragraph(&fitted)
+    } else {
+        make_paragraph(content)
+    };
+
+    (fitted, truncated, paragraph)
+}
+
+pub fn width<Renderer>(
+    renderer: &Renderer,
+    content: &str,
+    size: Pixels,
+    line_height: text::LineHeight,
+    font: Renderer::Font,
+    align_y: Vertical,
+) -> f32
+where
+    Renderer: text::Renderer,
+{
+    paragraph(
+        renderer,
+        content,
+        Size::new(f32::INFINITY, line_height.to_absolute(size).0),
+        size,
+        line_height,
+        Some(font),
+        align_y,
+    )
+    .min_bounds()
+    .width
+}
+
 pub fn paragraph<Renderer>(
     renderer: &Renderer,
     content: &str,

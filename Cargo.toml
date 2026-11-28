@@ -24,6 +24,8 @@ advanced = []
 pub-internal-const = []
 # Makes the default motion scheme expressive
 expressive-defaults = []
+# Re-exports the library's built-in SVG icons
+icons = []
 # Material Shapes - requires a dependency so it's optional
 shapes = [ "dep:polymorpher", "iced/canvas" ]
 

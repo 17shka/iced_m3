@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use common::section_header;
 use iced::{
     Alignment, Element,
@@ -5,6 +7,11 @@ use iced::{
 };
 use iced_m3::theme::{Accent, Theme};
 use iced_m3::widget::{button, circular_loading_indicator, loading_indicator, progress_bar};
+
+/// How often the animation advances.
+const TICK_RATE: Duration = Duration::from_millis(50);
+/// How long a full sweep of the progress bar takes.
+const ANIM_DURATION: Duration = Duration::from_secs(10);
 
 #[derive(Clone)]
 pub enum Message {
@@ -33,7 +40,7 @@ impl Page {
     pub fn update(&mut self, message: Message) {
         match message {
             Message::Tick => {
-                self.progress_value += 0.005;
+                self.progress_value += TICK_RATE.as_secs_f32() / ANIM_DURATION.as_secs_f32();
                 if self.progress_value > 1.0 {
                     self.progress_value = 0.0;
                 }
@@ -56,7 +63,7 @@ impl Page {
     }
 
     pub fn subscription(&self) -> iced::Subscription<Message> {
-        iced::time::every(std::time::Duration::from_millis(50)).map(|_| Message::Tick)
+        iced::time::every(TICK_RATE).map(|_| Message::Tick)
     }
 
     pub fn view(&self, theme: &Theme) -> Element<'_, Message> {

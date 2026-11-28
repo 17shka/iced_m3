@@ -56,7 +56,7 @@ pub struct Labels<'a> {
 impl Default for Labels<'_> {
     fn default() -> Self {
         Self {
-            clear: Cow::Borrowed("Clear"),
+            clear: "Clear".into(),
             show_password: Cow::Borrowed("Show password"),
             hide_password: Cow::Borrowed("Hide password"),
             actions: ActionLabels::default(),
@@ -91,6 +91,7 @@ where
     background_color: Option<Color>,
     error: bool,
     clearable: bool,
+    tooltips_enabled: bool,
     tooltip_style: tooltip::Style,
     icon_tooltip: Option<text::Fragment<'a>>,
     labels: Labels<'a>,
@@ -281,6 +282,7 @@ where
             background_color: None,
             error: false,
             clearable: false,
+            tooltips_enabled: false,
             tooltip_style: tooltip::Style::new(theme),
             icon_tooltip: None,
             labels: Labels::default(),
@@ -298,6 +300,13 @@ where
     /// [`on_input`](Self::on_input) callback and its value is not empty.
     pub fn clearable(mut self, clearable: bool) -> Self {
         self.clearable = clearable;
+        self
+    }
+
+    /// Enables tooltips for the secure and clear buttons.
+    #[must_use]
+    pub fn tooltips_enabled(mut self, enabled: bool) -> Self {
+        self.tooltips_enabled = enabled;
         self
     }
 
@@ -1079,6 +1088,7 @@ where
     Message: Clone,
     Theme: Catalog,
     Renderer: text::Renderer + svg::Renderer + 'a,
+    Renderer::Font: From<iced::Font>,
 {
     fn tag(&self) -> tree::Tag {
         tree::Tag::of::<State<Renderer::Paragraph>>()
@@ -1192,7 +1202,7 @@ where
                 event,
                 cursor,
                 self.eye_bounds(layout),
-                self.on_toggle_secure.is_some(),
+                self.tooltips_enabled && self.on_toggle_secure.is_some(),
                 tooltip::DEFAULT_DELAY,
                 shell,
             );
@@ -1200,7 +1210,7 @@ where
                 event,
                 cursor,
                 self.clear_bounds(layout),
-                self.show_clear(&self.value),
+                self.tooltips_enabled && self.show_clear(&self.value),
                 tooltip::DEFAULT_DELAY,
                 shell,
             );
@@ -1263,11 +1273,7 @@ where
                 {
                     let now = Instant::now();
 
-                    state.is_focused = Some(Focus {
-                        updated_at: now,
-                        now,
-                        is_window_focused: true,
-                    });
+                    state.is_focused = Some(Focus::new(now));
 
                     state.cursor.select_all(&self.value);
 
@@ -1300,11 +1306,7 @@ where
                 state.is_focused = if click_position.is_some() {
                     let now = Instant::now();
 
-                    Some(Focus {
-                        updated_at: now,
-                        now,
-                        is_window_focused: true,
-                    })
+                    Some(Focus::new(now))
                 } else {
                     None
                 };
@@ -1407,11 +1409,7 @@ where
                 };
 
                 let now = Instant::now();
-                state.is_focused = Some(Focus {
-                    updated_at: now,
-                    now,
-                    is_window_focused: true,
-                });
+                state.is_focused = Some(Focus::new(now));
 
                 if state.cursor.selection(&self.value).is_none() {
                     let text_layout = layout.children().next().unwrap();
@@ -2056,12 +2054,10 @@ where
 
         if state.context_menu.is_some() {
             let style = menu::Style::new(self.theme, false);
-            let font = self.font;
-
             return Some(overlay::Element::new(Box::new(ContextMenuOverlay {
                 host: TextInputContext { input: self, state },
                 style,
-                font,
+                font: None,
                 translation,
             })));
         }
@@ -2071,7 +2067,8 @@ where
             |rect: Rectangle| Rectangle::new(rect.position() + translation, rect.size());
 
         // The eye button is icon-only, so spell out what it does.
-        if state.eye_hover.is_open()
+        if self.tooltips_enabled
+            && state.eye_hover.is_open()
             && let Some(bounds) = self.eye_bounds(layout)
         {
             let label = if self.is_secure {
@@ -2092,7 +2089,8 @@ where
             ));
         }
 
-        if state.clear_hover.is_open()
+        if self.tooltips_enabled
+            && state.clear_hover.is_open()
             && let Some(bounds) = self.clear_bounds(layout)
         {
             let label = self.labels.clear.clone();
@@ -2169,6 +2167,7 @@ crate::macros::impl_element_from!(
         Message: Clone + 'a,
         Theme: Catalog + 'a,
         Renderer: text::Renderer + svg::Renderer + 'a,
+        Renderer::Font: From<iced::Font>,
 );
 
 /// The content of the [`Icon`].
@@ -2249,11 +2248,7 @@ impl<P: text::Paragraph> State<P> {
     pub fn focus(&mut self) {
         let now = Instant::now();
 
-        self.is_focused = Some(Focus {
-            updated_at: now,
-            now,
-            is_window_focused: true,
-        });
+        self.is_focused = Some(Focus::new(now));
 
         self.move_cursor_to_end();
     }

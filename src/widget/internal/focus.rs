@@ -1,7 +1,9 @@
+use std::time::Duration;
+
 use iced::time::Instant;
 
-/// How long the caret stays in each blink phase, in milliseconds.
-pub(crate) const CURSOR_BLINK_INTERVAL_MILLIS: u128 = 500;
+/// How long the caret stays in each blink phase.
+pub(crate) const CURSOR_BLINK_INTERVAL: Duration = Duration::from_millis(500);
 
 /// Bookkeeping for a blinking caret: when it last moved (or the widget gained
 /// focus), the time of the current frame, and whether the window has focus.
@@ -19,24 +21,19 @@ pub struct Focus {
     pub is_window_focused: bool,
 }
 
-impl Default for Focus {
-    fn default() -> Self {
-        let now = Instant::now();
-
+impl Focus {
+    /// Creates the blink bookkeeping, anchored at `now`.
+    pub fn new(now: Instant) -> Self {
         Self {
             updated_at: now,
             now,
             is_window_focused: true,
         }
     }
-}
 
-impl Focus {
     /// Restarts the blink phase so the caret is visible right after an
     /// interaction.
-    pub fn restart(&mut self) {
-        let now = Instant::now();
-
+    pub fn restart(&mut self, now: Instant) {
         self.updated_at = now;
         self.now = now;
     }
@@ -46,23 +43,21 @@ impl Focus {
     /// This folds in the window focus check, so callers only need to handle
     /// their own enabled/focused conditions.
     pub fn is_caret_visible(&self) -> bool {
+        let elapsed = self.now.saturating_duration_since(self.updated_at);
+
         self.is_window_focused
-            && (self
-                .now
-                .saturating_duration_since(self.updated_at)
-                .as_millis()
-                / CURSOR_BLINK_INTERVAL_MILLIS)
-                .is_multiple_of(2)
+            && (elapsed.as_millis() / CURSOR_BLINK_INTERVAL.as_millis()).is_multiple_of(2)
     }
 
     /// Milliseconds until the caret flips phase, for scheduling a redraw.
     #[must_use]
     pub fn millis_until_blink(&self) -> u128 {
-        CURSOR_BLINK_INTERVAL_MILLIS
-            - self
-                .now
-                .saturating_duration_since(self.updated_at)
-                .as_millis()
-                % CURSOR_BLINK_INTERVAL_MILLIS
+        let elapsed = self
+            .now
+            .saturating_duration_since(self.updated_at)
+            .as_millis();
+        let interval = CURSOR_BLINK_INTERVAL.as_millis();
+
+        interval - elapsed % interval
     }
 }

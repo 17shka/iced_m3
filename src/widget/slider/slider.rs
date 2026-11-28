@@ -16,7 +16,7 @@ use iced_widget::core::text;
 use super::*;
 use crate::{
     animation::motion::{self, Spring, SpringValue, fast_effects, fast_spatial},
-    widget::ripple::Ripple,
+    widget::{internal::geometry::expanded_bounds, ripple::Ripple},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,8 +96,8 @@ impl<P: text::Paragraph> State<P> {
         self.common.step(now);
         self.lower_width_spring.step(now);
         self.upper_width_spring.step(now);
-        self.lower_position_spring.step(now);
-        self.upper_position_spring.step(now);
+        step_handle_spring(&mut self.lower_position_spring, now);
+        step_handle_spring(&mut self.upper_position_spring, now);
         self.label_anchor_offset_spring.step(now);
     }
 }
@@ -480,12 +480,16 @@ where
         // the widget is rebuilt between events (e.g., via view()).
         if state.drag.is_none() {
             let now = Instant::now();
-            state
-                .lower_position_spring
-                .set_target(value_factor(self.lower, &self.range), now);
-            state
-                .upper_position_spring
-                .set_target(value_factor(self.upper, &self.range), now);
+            set_handle_target(
+                &mut state.lower_position_spring,
+                value_factor(self.lower, &self.range),
+                now,
+            );
+            set_handle_target(
+                &mut state.upper_position_spring,
+                value_factor(self.upper, &self.range),
+                now,
+            );
         }
     }
 
@@ -575,7 +579,7 @@ where
             ),
         ] {
             let interaction_bounds = if state.drag.is_some_and(|(t, _)| t == thumb) {
-                huge_bounds(bounds)
+                expanded_bounds(bounds)
             } else {
                 circle
             };
@@ -637,10 +641,10 @@ where
         let upper_target = value_factor(self.upper, &self.range);
 
         if !matches!(state.drag, Some((Thumb::Lower, Some(_)))) || !continuous_drag {
-            state.lower_position_spring.set_target(lower_target, now);
+            set_handle_target(&mut state.lower_position_spring, lower_target, now);
         }
         if !matches!(state.drag, Some((Thumb::Upper, Some(_)))) || !continuous_drag {
-            state.upper_position_spring.set_target(upper_target, now);
+            set_handle_target(&mut state.upper_position_spring, upper_target, now);
         }
         state.lower_width_spring.set_target(
             match state.drag {
@@ -747,7 +751,10 @@ where
         match event {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
             | Event::Touch(touch::Event::FingerPressed { .. }) => {
-                if enabled && let Some(position) = cursor.position_over(bounds) {
+                if enabled
+                    && !shell.is_event_captured()
+                    && let Some(position) = cursor.position_over(bounds)
+                {
                     if !state.common.is_focused {
                         state.common.is_focused = true;
                         shell.request_redraw();
@@ -838,9 +845,11 @@ where
                             if !continuous_drag {
                                 let new_target =
                                     value_factor(self.value_of(state.active), &self.range);
-                                state
-                                    .position_spring_mut(state.active)
-                                    .set_target(new_target, now);
+                                set_handle_target(
+                                    state.position_spring_mut(state.active),
+                                    new_target,
+                                    now,
+                                );
                             }
                         }
 

@@ -56,7 +56,6 @@ where
         if let Some(label) = self.label.as_ref() {
             let max_width = max_width - menu::constants::GROUP_LABEL_LEFT_OFFSET.0;
             let limits = limits.max_width(max_width);
-            let label: &str = label;
             let size = menu::constants::GROUP_LABEL_FONT_SIZE;
             let line_height = text::LineHeight::Absolute(menu::constants::GROUP_LABEL_LINE_HEIGHT);
             let font = self.label_font;

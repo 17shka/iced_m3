@@ -253,7 +253,7 @@ where
     style: Style,
     base: Element<'a, Message, Theme, Renderer>,
     label: Option<text::Fragment<'a>>,
-    label_font: Option<Renderer::Font>,
+    label_font: Option<iced::Font>,
     position: Position,
     gap: f32,
     max_width: f32,
@@ -263,6 +263,7 @@ where
 impl<'a, Message, Theme, Renderer> Tooltip<'a, Message, Theme, Renderer>
 where
     Renderer: 'a + text::Renderer,
+    Renderer::Font: From<iced::Font>,
 {
     /// Creates a new [`Tooltip`] around `base`.
     #[must_use]
@@ -295,12 +296,12 @@ where
 
     /// Sets the font of the label.
     #[must_use]
-    pub fn label_font(mut self, font: Renderer::Font) -> Self {
+    pub fn label_font(mut self, font: iced::Font) -> Self {
         self.label_font = Some(font);
         self
     }
 
-    crate::macros::maybe_assign!(label_font_maybe, label_font, Option<Renderer::Font>);
+    crate::macros::maybe_assign!(label_font_maybe, label_font, Option<iced::Font>);
 
     /// Sets the side the tooltip is placed on.
     #[must_use]
@@ -340,19 +341,13 @@ where
         self.delay = delay;
         self
     }
-
-    /// Sets the appearance of the tooltip.
-    #[must_use]
-    pub fn style(mut self, style: Style) -> Self {
-        self.style = style;
-        self
-    }
 }
 
 impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer>
     for Tooltip<'a, Message, Theme, Renderer>
 where
     Renderer: 'a + text::Renderer,
+    Renderer::Font: From<iced::Font>,
 {
     fn tag(&self) -> tree::Tag {
         tree::Tag::of::<State>()
@@ -494,7 +489,7 @@ where
             (State::Open { .. }, Some(label)) => Some(label_overlay(
                 anchor,
                 label.clone(),
-                self.label_font,
+                self.label_font.map(Renderer::Font::from),
                 self.style,
                 self.position,
                 self.gap,
@@ -591,7 +586,7 @@ pub(crate) fn label_overlay<'a, Message, Theme, Renderer>(
 where
     Renderer: 'a + text::Renderer,
 {
-    overlay::Element::new(Box::new(LabelOverlay {
+    overlay::Element::new(Box::new(LabelOverlay::<Renderer> {
         anchor,
         label,
         font,
@@ -600,6 +595,7 @@ where
         gap,
         max_width,
         cursor,
+        renderer: std::marker::PhantomData,
     }))
 }
 
@@ -615,6 +611,7 @@ where
     gap: f32,
     max_width: f32,
     cursor: Option<Point>,
+    renderer: std::marker::PhantomData<Renderer>,
 }
 
 impl<Renderer> LabelOverlay<'_, Renderer>
@@ -862,7 +859,11 @@ fn fits(point: Point, size: Size, viewport: Size, margin: f32) -> bool {
 crate::macros::impl_element_from!(
     ['a, Message, Theme, Renderer]
     Tooltip<'a, Message, Theme, Renderer> => Element<'a, Message, Theme, Renderer>
-    where Message: 'a, Theme: 'a, Renderer: 'a + text::Renderer,
+    where
+        Message: 'a,
+        Theme: 'a,
+        Renderer: 'a + text::Renderer,
+        Renderer::Font: From<iced::Font>,
 );
 
 #[cfg(test)]

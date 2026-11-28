@@ -55,7 +55,7 @@ fn direction_button<'a>(
     let style = if active {
         button::Style::filled(theme, Accent::Primary)
     } else {
-        button::Style::outlined(theme, Accent::Primary)
+        button::Style::outlined(theme)
     };
 
     widget::button(style, button::Content::Label(content.into()))

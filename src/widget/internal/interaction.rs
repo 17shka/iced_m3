@@ -9,12 +9,14 @@ pub enum PressUpdate {
     Lost,
 }
 
-/// The interaction for an `enabled` interactive widget whose `bounds`
-/// contain the cursor: a pointer hand when interactive, otherwise the
-/// default interaction.
-pub fn pointer_when(enabled: bool, cursor: mouse::Cursor, bounds: Rectangle) -> mouse::Interaction {
+pub fn pointer_when(
+    enabled: bool,
+    cursor: mouse::Cursor,
+    bounds: Rectangle,
+    interaction: mouse::Interaction,
+) -> mouse::Interaction {
     if enabled && cursor.is_over(bounds) {
-        mouse::Interaction::Pointer
+        interaction
     } else {
         mouse::Interaction::default()
     }

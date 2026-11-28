@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use iced::{
-    Border, Color, Event, Point, Radians, Rectangle, Size, Vector,
+    Border, Color, Event, Font, Point, Radians, Rectangle, Size, Vector,
     advanced::{
         Clipboard, Layout, Shell, clipboard, layout, mouse, overlay, renderer, svg,
         text::{self, Paragraph as _},
@@ -89,13 +89,10 @@ const CONTEXT_MENU_ENTRIES: [ContextMenuEntry; 9] = [
     ContextMenuEntry::Item(Action::Redo),
 ];
 
-pub(crate) struct ContextMenuOverlay<H, Renderer>
-where
-    Renderer: text::Renderer,
-{
+pub(crate) struct ContextMenuOverlay<H> {
     pub(crate) host: H,
     pub(crate) style: menu::Style,
-    pub(crate) font: Option<Renderer::Font>,
+    pub(crate) font: Option<Font>,
     pub(crate) translation: Vector,
 }
 
@@ -243,11 +240,12 @@ fn perform<H, Message, Renderer>(
 }
 
 impl<H, Message, Theme, Renderer> overlay::Overlay<Message, Theme, Renderer>
-    for ContextMenuOverlay<H, Renderer>
+    for ContextMenuOverlay<H>
 where
     Message: Clone,
     H: ContextMenuHost<Message, Renderer>,
     Renderer: text::Renderer + svg::Renderer,
+    Renderer::Font: From<Font>,
 {
     fn layout(&mut self, _renderer: &Renderer, bounds: Size) -> layout::Node {
         let size = menu_size();
@@ -277,7 +275,10 @@ where
 
         let bounds = layout.bounds();
 
-        let font = self.font.unwrap_or_else(|| renderer.default_font());
+        let font = self
+            .font
+            .map(Renderer::Font::from)
+            .unwrap_or_else(|| renderer.default_font());
         let pressed = self.host.menu().and_then(|menu| menu.pressed);
 
         renderer.fill_quad(

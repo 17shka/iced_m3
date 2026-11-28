@@ -14,10 +14,12 @@ use crate::widget::internal::scrollbar;
 #[derive(Default)]
 struct WrapperState {
     is_dragging: bool,
+    id: Option<String>,
 }
 
 struct ScrollableWrapper<'a, Message, Theme, Renderer> {
     content: Element<'a, Message, Theme, Renderer>,
+    id: Option<String>,
     scrollbar_width: f32,
     scrollbar_margin: f32,
     scroller_width: f32,
@@ -95,7 +97,14 @@ where
     }
 
     fn diff(&self, tree: &mut Tree) {
-        tree.diff_children(std::slice::from_ref(&self.content));
+        let state = tree.state.downcast_mut::<WrapperState>();
+        if state.id != self.id {
+            state.id = self.id.clone();
+            state.is_dragging = false;
+            tree.children = vec![Tree::new(&self.content)];
+        } else {
+            tree.diff_children(std::slice::from_ref(&self.content));
+        }
     }
 
     fn size(&self) -> Size<Length> {
@@ -237,6 +246,7 @@ where
 
 pub struct Scrollable<'a, Message, Theme, Renderer> {
     content: Element<'a, Message, Theme, Renderer>,
+    id: Option<String>,
     scrollbar_color: Color,
     width: Length,
     height: Length,
@@ -254,6 +264,7 @@ impl<'a, Message, Theme, Renderer> Scrollable<'a, Message, Theme, Renderer> {
     ) -> Self {
         Self {
             content: content.into(),
+            id: None,
             scrollbar_color,
             width: Length::Shrink,
             height: Length::Shrink,
@@ -263,6 +274,12 @@ impl<'a, Message, Theme, Renderer> Scrollable<'a, Message, Theme, Renderer> {
             horizontal_alignment: Anchor::End,
             embed: true,
         }
+    }
+
+    /// Resets the scroll position when the identifier changes.
+    pub fn id(mut self, id: impl Into<String>) -> Self {
+        self.id = Some(id.into());
+        self
     }
 
     pub fn width(mut self, width: impl Into<Length>) -> Self {
@@ -381,6 +398,7 @@ where
 
         Element::new(ScrollableWrapper {
             content: inner,
+            id: builder.id,
             scrollbar_width: scrollbar::WIDTH,
             scrollbar_margin: scrollbar::MARGIN,
             scroller_width: scrollbar::WIDTH,

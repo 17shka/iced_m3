@@ -18,13 +18,6 @@ pub(crate) fn clamp_into_viewport(position: Point, size: Size, viewport: Size) -
     )
 }
 
-pub(crate) fn inset(viewport: Size, margin: f32) -> Size {
-    Size::new(
-        (viewport.width - margin * 2.0).max(0.0),
-        (viewport.height - margin * 2.0).max(0.0),
-    )
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DropDirection {
     Down,
@@ -125,15 +118,6 @@ mod tests {
             clamp_into_viewport(Point::new(10.0, 10.0), surface, viewport),
             Point::new(0.0, 0.0)
         );
-    }
-
-    #[test]
-    fn inset_shrinks_the_viewport_by_the_margin() {
-        assert_eq!(
-            inset(Size::new(800.0, 600.0), 24.0),
-            Size::new(752.0, 552.0)
-        );
-        assert_eq!(inset(Size::new(10.0, 10.0), 24.0), Size::ZERO);
     }
 
     #[test]

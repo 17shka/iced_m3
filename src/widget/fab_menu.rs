@@ -15,8 +15,6 @@ use iced::{
     border::Radius,
     touch, window,
 };
-use iced_widget::text::IntoFragment;
-use std::borrow::Cow;
 
 use crate::{
     animation::{
@@ -37,7 +35,6 @@ use crate::{
             placement,
         },
         ripple::Ripple,
-        tooltip,
     },
 };
 
@@ -62,7 +59,6 @@ pub struct Style {
     pub state_layer_collapsed: StateLayer,
     pub item_style: button::Style,
     pub accent: Accent,
-    pub tooltip: tooltip::Style,
 }
 
 impl Style {
@@ -80,7 +76,6 @@ impl Style {
             state_layer_collapsed: StateLayer::new(accent.on_color_container(theme)),
             item_style: button::Style::fab_tonal(theme, accent),
             accent,
-            tooltip: tooltip::Style::new(theme),
         }
     }
 }
@@ -103,21 +98,6 @@ where
     pub icon: Icon<'a>,
 }
 
-#[derive(Debug, Clone)]
-pub struct Labels<'a> {
-    pub open_menu: text::Fragment<'a>,
-    pub close_menu: text::Fragment<'a>,
-}
-
-impl Default for Labels<'_> {
-    fn default() -> Self {
-        Self {
-            open_menu: Cow::Borrowed("Open menu"),
-            close_menu: Cow::Borrowed("Close menu"),
-        }
-    }
-}
-
 pub struct FABMenu<'a, Message, Theme, Renderer>
 where
     Message: Clone,
@@ -127,7 +107,6 @@ where
     spatial_spring: Option<Spring>,
     effects_spring: Option<Spring>,
     items: Vec<Element<'a, Message, Theme, Renderer>>,
-    labels: Labels<'a>,
 
     // Cache
     style_checked: bool,
@@ -151,18 +130,34 @@ where
         let items = items
             .into_iter()
             .map(|i| {
-                widget::fab(
+                let button = widget::button(
                     style.item_style,
-                    widget::fab::Content::Extended {
+                    button::Content::Full {
                         icon: i.icon,
                         label: i.label,
                     },
-                    i.on_press,
                 )
-                .corner_style(CornerStyle::Rounded)
                 .label_font_maybe(label_font)
-                .size(BUTTON_SIZE)
-                .into()
+                .size(button::Size {
+                    width: Length::Shrink,
+                    height: Length::Fixed(BUTTON_SIZE.container_height()),
+                    spacing: iced::Pixels(BUTTON_SIZE.content_spacing()),
+                    padding: iced::Padding::from([0.0, BUTTON_SIZE.padding()]),
+                    icon_size: BUTTON_SIZE.icon_size(),
+                    label_size: BUTTON_SIZE.label_size(),
+                    corner_radius: button::CornerRadius {
+                        style: CornerStyle::Rounded,
+                        shape_morph: false,
+                        rounded: f32::MAX.into(),
+                        square: BUTTON_SIZE.rounding(),
+                        pressed: 0.0.into(),
+                    },
+                });
+
+                match i.on_press {
+                    Action::Direct(message) => button.on_press(message).into(),
+                    Action::Closure(callback) => button.on_press_with(callback).into(),
+                }
             })
             .collect();
 
@@ -172,7 +167,7 @@ where
             style,
             spatial_spring: None,
             effects_spring: None,
-            labels: Labels::default(),
+
             style_checked: false,
         }
     }
@@ -207,24 +202,6 @@ where
     }
 
     crate::macros::maybe_assign!(effects_spring_maybe, effects_spring, Option<Spring>);
-
-    #[must_use]
-    pub fn labels(mut self, labels: Labels<'a>) -> Self {
-        self.labels = labels;
-        self
-    }
-
-    #[must_use]
-    pub fn open_menu_label(mut self, label: impl IntoFragment<'a>) -> Self {
-        self.labels.open_menu = label.into_fragment();
-        self
-    }
-
-    #[must_use]
-    pub fn close_menu_label(mut self, label: impl IntoFragment<'a>) -> Self {
-        self.labels.close_menu = label.into_fragment();
-        self
-    }
 }
 
 struct State {
@@ -238,7 +215,6 @@ struct State {
     items_ready: bool,
     ripple: Ripple,
     last_style: Style,
-    tooltip: tooltip::Hover,
 }
 
 impl State {
@@ -291,7 +267,6 @@ where
             items_ready: false,
             ripple: Ripple::new(),
             last_style: self.style,
-            tooltip: tooltip::Hover::default(),
         };
 
         tree::State::new(state)
@@ -390,14 +365,6 @@ where
         let state = tree.state.downcast_mut::<State>();
 
         let is_hovered = cursor.is_over(layout.bounds());
-        state.tooltip.update(
-            event,
-            cursor,
-            Some(layout.bounds()),
-            true,
-            tooltip::DEFAULT_DELAY,
-            shell,
-        );
         state
             .ripple
             .handle(event, layout.bounds(), cursor, true, shell);
@@ -492,13 +459,9 @@ where
         _viewport: &Rectangle,
         translation: Vector,
     ) -> Option<iced::advanced::overlay::Element<'b, Message, Theme, Renderer>> {
-        let (is_expanded, is_animating, tooltip_open) = {
+        let (is_expanded, is_animating) = {
             let state = tree.state.downcast_ref::<State>();
-            (
-                state.is_expanded,
-                state.presented_progress > 0.0,
-                state.tooltip.is_open(),
-            )
+            (state.is_expanded, state.presented_progress > 0.0)
         };
 
         let mut base_bounds = layout.bounds();
@@ -514,26 +477,6 @@ where
                 tree,
                 items: &mut self.items,
             })));
-        }
-
-        if tooltip_open {
-            // The trigger is icon-only, so spell out what pressing it does.
-            let label = if is_expanded {
-                self.labels.close_menu.clone()
-            } else {
-                self.labels.open_menu.clone()
-            };
-
-            children.push(tooltip::label_overlay(
-                base_bounds,
-                label,
-                None,
-                self.style.tooltip,
-                tooltip::Position::Above,
-                8.0,
-                tooltip::DEFAULT_MAX_WIDTH,
-                None,
-            ));
         }
 
         if children.is_empty() {

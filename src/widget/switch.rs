@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use iced::time::Instant;
 
 use iced::{
@@ -20,7 +22,10 @@ use crate::{
     theme::ColorScheme,
     widget::{
         common_icons,
-        internal::motion::{sync_spring_model, sync_style_spring},
+        internal::{
+            geometry::expanded_bounds,
+            motion::{sync_spring_model, sync_style_spring},
+        },
         ripple::{Ripple, state_layer_overlay},
     },
 };
@@ -144,7 +149,7 @@ impl Style {
     }
 }
 
-pub struct Switch<Message>
+pub struct Switch<Message, Theme = iced::Theme, Renderer = iced::Renderer>
 where
     Message: Clone,
 {
@@ -157,9 +162,10 @@ where
 
     // Cache
     style_checked: bool,
+    renderer: PhantomData<fn() -> (Theme, Renderer)>,
 }
 
-impl<Message> Switch<Message>
+impl<Message, Theme, Renderer> Switch<Message, Theme, Renderer>
 where
     Message: Clone,
 {
@@ -173,6 +179,7 @@ where
             effects_spring: None,
             spatial_spring: None,
             style_checked: false,
+            renderer: PhantomData,
         }
     }
 
@@ -252,7 +259,7 @@ struct State {
     drag_offset: f32,
 }
 
-impl<Message, Theme, Renderer> Widget<Message, Theme, Renderer> for Switch<Message>
+impl<Message, Theme, Renderer> Widget<Message, Theme, Renderer> for Switch<Message, Theme, Renderer>
 where
     Message: Clone,
     Renderer: iced::advanced::svg::Renderer + iced_widget::renderer::geometry::Renderer,
@@ -438,12 +445,7 @@ where
         // While a drag is in progress the pointer can leave the track, but the
         // ripple has to stay pressed until the button is released
         let interaction_bounds = if state.is_dragging {
-            Rectangle {
-                x: bounds.x - 1.0e6,
-                y: bounds.y - 1.0e6,
-                width: bounds.width + 2.0e6,
-                height: bounds.height + 2.0e6,
-            }
+            expanded_bounds(bounds)
         } else {
             bounds
         };
@@ -679,6 +681,9 @@ fn state_layer_bounds(bounds: Rectangle, handle_size: f32, handle_center: f32) -
 }
 
 crate::macros::impl_element_from!(
-    ['a, Message] Switch<Message> => Element<'a, Message>
-    where Message: 'a + Clone,
+    ['a, Message, Theme, Renderer] Switch<Message, Theme, Renderer> => Element<'a, Message, Theme, Renderer>
+    where
+        Message: 'a + Clone,
+        Theme: 'a,
+        Renderer: 'a + iced::advanced::svg::Renderer + iced_widget::renderer::geometry::Renderer,
 );

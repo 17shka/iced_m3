@@ -241,7 +241,6 @@ impl Page {
                 .font(fonts::text_bold())
                 .size(24.0)
                 .color(theme.on_surface()),
-            row(shape_cards).spacing(SPACE_150).wrap(),
             shape(
                 self.selected.to_rounded_polygon(),
                 iced_m3::widget::shapes::Style::new(theme)
@@ -250,6 +249,7 @@ impl Page {
             .transition_spring(fast_spatial(motion::Scheme::Expressive))
             .size(200.0),
             text(format!("Selected: {}", self.selected.as_str())).color(theme.on_surface()),
+            row(shape_cards).spacing(SPACE_150).wrap(),
         ]
         .spacing(20)
         .into()

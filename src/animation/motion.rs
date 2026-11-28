@@ -307,9 +307,7 @@ where
     }
 
     pub fn set_model(&mut self, spring: Spring) {
-        if self.spring.model != spring {
-            self.spring.model = spring;
-        }
+        self.spring.model = spring;
     }
 
     pub fn set_model_if_some(&mut self, spring: Option<Spring>) {

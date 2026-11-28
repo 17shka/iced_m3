@@ -8,6 +8,7 @@ use iced::{
         mouse,
         renderer::Quad,
     },
+    border::Radius,
     widget::canvas,
 };
 
@@ -24,7 +25,7 @@ use crate::{
             interaction,
             motion::{sync_spring_model, sync_style_spring},
         },
-        ripple::{Ripple, state_layer_overlay},
+        ripple::Ripple,
     },
 };
 
@@ -376,6 +377,14 @@ where
             style.background_color,
         );
 
+        state.ripple.draw(
+            renderer,
+            centered_square(bounds, STATE_LAYER_SIZE),
+            Radius::from(f32::MAX),
+            *self.style.state_layer(self.value.is_selected()),
+            self.on_toggle.is_some(),
+        );
+
         let check = state.check.value().clamp(0.0, 1.0);
         let morph = state.morph.value().clamp(0.0, 1.0);
 
@@ -446,7 +455,12 @@ where
         _viewport: &iced::Rectangle,
         _renderer: &Renderer,
     ) -> mouse::Interaction {
-        interaction::pointer_when(self.on_toggle.is_some(), cursor, layout.bounds())
+        interaction::pointer_when(
+            self.on_toggle.is_some(),
+            cursor,
+            layout.bounds(),
+            mouse::Interaction::Pointer,
+        )
     }
 
     fn update(
@@ -538,28 +552,6 @@ where
             self.on_toggle.as_ref(),
             shell,
         );
-    }
-
-    fn overlay<'b>(
-        &'b mut self,
-        tree: &'b mut iced::advanced::widget::Tree,
-        layout: iced::advanced::Layout<'b>,
-        _renderer: &Renderer,
-        viewport: &iced::Rectangle,
-        translation: iced::Vector,
-    ) -> Option<iced::advanced::overlay::Element<'b, Message, Theme, Renderer>> {
-        let state = tree.state.downcast_ref::<State>();
-        let bounds = layout.bounds();
-        let enabled = self.on_toggle.is_some();
-
-        state_layer_overlay(
-            state.ripple,
-            *self.style.state_layer(self.value.is_selected()),
-            centered_square(bounds, STATE_LAYER_SIZE),
-            translation,
-            viewport,
-            enabled,
-        )
     }
 }
 

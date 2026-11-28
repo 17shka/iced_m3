@@ -7,14 +7,13 @@ use iced::{
     advanced::{Widget, layout::Node, mouse, overlay, text, widget::Tree},
 };
 use iced_widget::text::IntoFragment;
-use std::borrow::Cow;
 
 use crate::{
     animation::motion::{self, Spring, SpringValue, default_spatial},
     style::StateLayer,
     theme::ColorScheme,
     widget::{
-        self, Action, badge,
+        self, badge,
         button::{self, ElevationStates, Outline},
         common_icons::{self},
         hybrid_icon::Icon,
@@ -66,7 +65,7 @@ where
     pub label: text::Fragment<'a>,
     pub style: crate::widget::fab::Style,
     pub label_size_scale: f32,
-    pub on_press: Action<'a, Message>,
+    pub on_press: Message,
 }
 
 impl<'a, Message: Clone> Clone for Fab<'a, Message> {
@@ -76,10 +75,7 @@ impl<'a, Message: Clone> Clone for Fab<'a, Message> {
             label: self.label.clone(),
             style: self.style,
             label_size_scale: self.label_size_scale,
-            on_press: match &self.on_press {
-                Action::Direct(msg) => Action::Direct(msg.clone()),
-                Action::Closure(_) => panic!("Fab::clone() does not support Action::Closure"),
-            },
+            on_press: self.on_press.clone(),
         }
     }
 }
@@ -172,8 +168,8 @@ pub struct Labels<'a> {
 impl Default for Labels<'_> {
     fn default() -> Self {
         Self {
-            expand_menu: Cow::Borrowed("Expand menu"),
-            collapse_menu: Cow::Borrowed("Collapse menu"),
+            expand_menu: "Expand menu".into(),
+            collapse_menu: "Collapse menu".into(),
         }
     }
 }
@@ -204,6 +200,7 @@ where
     fab_visible: bool,
     scrollbar_color: Option<Color>,
     labels: Labels<'a>,
+    tooltips_enabled: bool,
 
     menu_button: Option<Element<'a, Message, Theme, Renderer>>,
     fab_element: Option<Element<'a, Message, Theme, Renderer>>,
@@ -240,6 +237,7 @@ where
             fab_visible: true,
             scrollbar_color: None,
             labels: Labels::default(),
+            tooltips_enabled: false,
             menu_button: None,
             fab_element: None,
             item_elements: Vec::new(),
@@ -385,6 +383,12 @@ where
     crate::macros::maybe_assign!(expand_spring_maybe, expand_spring, Option<Spring>);
 
     #[must_use]
+    pub fn tooltips_enabled(mut self, enabled: bool) -> Self {
+        self.tooltips_enabled = enabled;
+        self
+    }
+
+    #[must_use]
     pub fn labels(mut self, labels: Labels<'a>) -> Self {
         self.labels = labels;
         self
@@ -431,11 +435,7 @@ where
     Theme: 'a,
     Renderer: 'a + iced::advanced::Renderer,
 {
-    Element::new(
-        iced::widget::Space::new()
-            .width(Length::Shrink)
-            .height(Length::Shrink),
-    )
+    iced::widget::space().into()
 }
 
 /// The widest label the rail can show, or `None` when the rail sizes itself to its content.
@@ -468,21 +468,20 @@ where
         .map(|(index, content)| {
             let active = index == nav_rail.active_index;
 
-            Element::from(
-                item::Item::new(
-                    nav_rail.style.item_style,
-                    content.clone(),
-                    nav_rail.mode.is_expanded(),
-                    nav_rail.label_font,
-                    active,
-                    nav_rail.hide_labels_when_collapsed,
-                    label_max_width(nav_rail.mode),
-                    nav_rail.style.tooltip_style,
-                )
-                .motion_scheme_maybe(nav_rail.motion_scheme)
-                .active_transition_spring_maybe(nav_rail.item_active_transition_spring)
-                .color_spring_maybe(nav_rail.item_color_spring),
+            item::Item::new(
+                nav_rail.style.item_style,
+                content.clone(),
+                nav_rail.mode.is_expanded(),
+                nav_rail.label_font,
+                active,
+                nav_rail.hide_labels_when_collapsed,
+                label_max_width(nav_rail.mode),
+                nav_rail.style.tooltip_style,
             )
+            .motion_scheme_maybe(nav_rail.motion_scheme)
+            .active_transition_spring_maybe(nav_rail.item_active_transition_spring)
+            .color_spring_maybe(nav_rail.item_color_spring)
+            .into()
         })
         .collect()
 }
@@ -668,17 +667,13 @@ where
 
         // Menu
         let mut menu_placeholder: Element<'a, Message, Theme, Renderer> = placeholder();
-        let menu_layout = if let Some(menu) = self.menu_button.as_mut() {
-            menu.as_widget_mut()
-                .layout(&mut tree.children[tree_index], renderer, limits)
-        } else {
-            menu_placeholder.as_widget_mut().layout(
-                &mut tree.children[tree_index],
-                renderer,
-                limits,
-            )
-        }
-        .translate(Vector::new(MENU_OFFSET, offset));
+        let menu_layout = self
+            .menu_button
+            .as_mut()
+            .unwrap_or(&mut menu_placeholder)
+            .as_widget_mut()
+            .layout(&mut tree.children[tree_index], renderer, limits)
+            .translate(Vector::new(MENU_OFFSET, offset));
         let menu_natural_height = menu_layout.bounds().height;
         let menu_effective_height = if self.menu_button.is_some() && self.menu_visible {
             menu_natural_height
@@ -698,15 +693,13 @@ where
 
         // Fab
         let mut fab_placeholder: Element<'a, Message, Theme, Renderer> = placeholder();
-        let fab_layout = if let Some(fab) = self.fab_element.as_mut() {
-            fab.as_widget_mut()
-                .layout(&mut tree.children[tree_index], renderer, limits)
-        } else {
-            fab_placeholder
-                .as_widget_mut()
-                .layout(&mut tree.children[tree_index], renderer, limits)
-        }
-        .translate(Vector::new(FAB_OFFSET, offset));
+        let fab_layout = self
+            .fab_element
+            .as_mut()
+            .unwrap_or(&mut fab_placeholder)
+            .as_widget_mut()
+            .layout(&mut tree.children[tree_index], renderer, limits)
+            .translate(Vector::new(FAB_OFFSET, offset));
         let fab_height = fab_layout.bounds().height;
         children.push(fab_layout);
         tree_index += 1;
@@ -727,10 +720,17 @@ where
                 if !inner_scrollable_tree.children.is_empty() {
                     let column_tree = &mut inner_scrollable_tree.children[0];
                     for item_tree in column_tree.children.iter_mut() {
-                        // Each item is wrapped in a `Tooltip`, so its state lives on the inner
-                        // child tree.
-                        if let Some(inner) = item_tree.children.first_mut() {
-                            inner.state.downcast_mut::<ItemState>().expansion = expansion;
+                        let item_state = if self.tooltips_enabled
+                            && !self.mode.is_expanded()
+                            && self.hide_labels_when_collapsed
+                        {
+                            item_tree.children.first_mut().map(|inner| &mut inner.state)
+                        } else {
+                            Some(&mut item_tree.state)
+                        };
+
+                        if let Some(item_state) = item_state {
+                            item_state.downcast_mut::<ItemState>().expansion = expansion;
                         }
                     }
                 }
@@ -1119,10 +1119,14 @@ where
                 value.labels.expand_menu.clone()
             };
 
-            widget::tooltip(value.style.tooltip_style, button)
-                .label(label)
-                .position(tooltip::Position::Above)
-                .into()
+            if value.tooltips_enabled {
+                widget::tooltip(value.style.tooltip_style, button)
+                    .label(label)
+                    .position(tooltip::Position::Above)
+                    .into()
+            } else {
+                button
+            }
         });
 
         let initial_fab_scale = if value.mode_is_expanded() { 1.0 } else { 0.0 };
@@ -1141,10 +1145,14 @@ where
                     .into();
 
             // The label is hidden while collapsed, so surface it as a tooltip.
-            widget::tooltip(value.style.tooltip_style, button)
-                .label_maybe(tooltip_label)
-                .position(tooltip::Position::Right)
-                .into()
+            if value.tooltips_enabled {
+                widget::tooltip(value.style.tooltip_style, button)
+                    .label_maybe(tooltip_label)
+                    .position(tooltip::Position::Right)
+                    .into()
+            } else {
+                button
+            }
         });
 
         let items = std::mem::take(&mut value.items);
@@ -1169,14 +1177,14 @@ where
                 .color_spring_maybe(value.item_color_spring)
                 .into();
 
-                // Collapsed rails hide the labels, so spell them out on hover.
-                widget::tooltip(value.style.tooltip_style, element)
-                    .label_maybe(
-                        (!expanded && value.hide_labels_when_collapsed)
-                            .then(|| content.label.clone()),
-                    )
-                    .position(tooltip::Position::Right)
-                    .into()
+                if value.tooltips_enabled && !expanded && value.hide_labels_when_collapsed {
+                    widget::tooltip(value.style.tooltip_style, element)
+                        .label(content.label.clone())
+                        .position(tooltip::Position::Right)
+                        .into()
+                } else {
+                    element
+                }
             })
             .collect();
 
@@ -1185,10 +1193,7 @@ where
             .scrollbar_color
             .unwrap_or(value.style.item_style.content_inactive);
         let taken_items = std::mem::take(&mut value.item_elements);
-        let mut col = iced::widget::Column::new().spacing(0.0).padding(0.0);
-        for item in taken_items {
-            col = col.push(item);
-        }
+        let col = iced::widget::column(taken_items);
         let scroller = crate::widget::scrollable::scrollable_with_color(scrollbar_color, col);
         value.items_container = Some(scroller.into());
 

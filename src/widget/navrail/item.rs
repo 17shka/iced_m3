@@ -49,11 +49,14 @@ use iced::{
 };
 
 use crate::{
-    animation::motion::{self, Spring, default_effects, fast_effects},
+    animation::{
+        Interpolable, lerp,
+        motion::{self, Spring, default_effects, fast_effects},
+    },
     widget::{
         internal::navigation_common::{
             badge_children, build_badge, colors_for, diff_badge, draw_icon, draw_indicator,
-            draw_label, handle_press, icon_paragraph, paragraph, update_springs,
+            draw_label, handle_press, icon_paragraph, update_springs,
         },
         tooltip,
     },
@@ -68,73 +71,6 @@ pub(crate) struct State {
     pub expansion: f32,
     /// Hover state of the tooltip that spells out a label that does not fit.
     tooltip: tooltip::Hover,
-}
-
-fn lerp(a: f32, b: f32, t: f32) -> f32 {
-    a + (b - a) * t
-}
-
-/// Fits `content` into `max_width`, trimming it and appending an ellipsis when it overflows.
-///
-/// Returns the text to shape together with whether it had to be shortened.
-fn fit_label<Renderer>(
-    renderer: &Renderer,
-    content: &str,
-    max_width: f32,
-    size: Pixels,
-    line_height: text::LineHeight,
-    font: Option<Font>,
-) -> (String, bool)
-where
-    Renderer: text::Renderer,
-    Renderer::Font: From<Font>,
-{
-    let width_of = |text: &str| {
-        paragraph(
-            renderer,
-            text,
-            Size::INFINITE,
-            size,
-            line_height,
-            font,
-            iced::alignment::Vertical::Center,
-        )
-        .min_bounds()
-        .width
-    };
-
-    if !max_width.is_finite() || width_of(content) <= max_width {
-        return (content.to_owned(), false);
-    }
-
-    const ELLIPSIS: char = '…';
-    let ellipsis_width = width_of("…");
-
-    if ellipsis_width > max_width {
-        return (String::new(), true);
-    }
-
-    let mut boundaries: Vec<usize> = content.char_indices().map(|(index, _)| index).collect();
-    boundaries.push(content.len());
-
-    let mut fits = 0;
-    let mut overflows = boundaries.len() - 1;
-
-    while overflows - fits > 1 {
-        let middle = (fits + overflows) / 2;
-        let candidate = content[..boundaries[middle]].trim_end();
-
-        if width_of(candidate) + ellipsis_width <= max_width {
-            fits = middle;
-        } else {
-            overflows = middle;
-        }
-    }
-
-    let mut truncated = content[..boundaries[fits]].trim_end().to_owned();
-    truncated.push(ELLIPSIS);
-
-    (truncated, true)
 }
 
 struct LabelBlend {
@@ -162,10 +98,6 @@ fn label_blend(expansion: f32, hide_when_collapsed: bool) -> LabelBlend {
         small: 1.0 - swap,
         large: swap,
     }
-}
-
-fn lerp_point(from: Point, to: Point, t: f32) -> Point {
-    Point::new(lerp(from.x, to.x, t).round(), lerp(from.y, to.y, t).round())
 }
 
 pub struct Item<'a, Message, Theme, Renderer>
@@ -345,57 +277,41 @@ where
         };
 
         if self.small_label_fit_width != Some(small_max_width) {
-            let (small_text, small_truncated) = fit_label(
-                renderer,
-                &self.content.label,
-                small_max_width,
-                Pixels(ITEM_SMALL_LABEL_SIZE),
-                text::LineHeight::Absolute(Pixels(ITEM_SMALL_LABEL_LINE_HEIGHT)),
-                self.label_font,
-            );
+            let (small_text, small_truncated, small_paragraph) =
+                crate::widget::internal::text::fit_label(
+                    renderer,
+                    &self.content.label,
+                    small_max_width,
+                    Pixels(ITEM_SMALL_LABEL_SIZE),
+                    text::LineHeight::Absolute(Pixels(ITEM_SMALL_LABEL_LINE_HEIGHT)),
+                    self.label_font.map(Renderer::Font::from),
+                    iced::alignment::Vertical::Center,
+                );
 
             self.small_label_truncated = small_truncated && !self.hide_labels_when_collapsed;
             self.small_label_fit_width = Some(small_max_width);
 
-            if self.small_label_text.as_deref() != Some(small_text.as_str()) {
-                self.small_label_paragraph = Some(paragraph(
-                    renderer,
-                    &small_text,
-                    Size::INFINITE,
-                    Pixels(ITEM_SMALL_LABEL_SIZE),
-                    text::LineHeight::Absolute(Pixels(ITEM_SMALL_LABEL_LINE_HEIGHT)),
-                    self.label_font,
-                    iced::alignment::Vertical::Center,
-                ));
-                self.small_label_text = Some(small_text);
-            }
+            self.small_label_paragraph = Some(small_paragraph);
+            self.small_label_text = Some(small_text);
         }
 
         if self.large_label_fit_width != Some(large_max_width) {
-            let (large_text, large_truncated) = fit_label(
-                renderer,
-                &self.content.label,
-                large_max_width,
-                Pixels(ITEM_LARGE_LABEL_SIZE),
-                text::LineHeight::Absolute(Pixels(ITEM_LARGE_LABEL_LINE_HEIGHT)),
-                self.label_font,
-            );
+            let (large_text, large_truncated, large_paragraph) =
+                crate::widget::internal::text::fit_label(
+                    renderer,
+                    &self.content.label,
+                    large_max_width,
+                    Pixels(ITEM_LARGE_LABEL_SIZE),
+                    text::LineHeight::Absolute(Pixels(ITEM_LARGE_LABEL_LINE_HEIGHT)),
+                    self.label_font.map(Renderer::Font::from),
+                    iced::alignment::Vertical::Center,
+                );
 
             self.large_label_truncated = large_truncated;
             self.large_label_fit_width = Some(large_max_width);
 
-            if self.large_label_text.as_deref() != Some(large_text.as_str()) {
-                self.large_label_paragraph = Some(paragraph(
-                    renderer,
-                    &large_text,
-                    Size::INFINITE,
-                    Pixels(ITEM_LARGE_LABEL_SIZE),
-                    text::LineHeight::Absolute(Pixels(ITEM_LARGE_LABEL_LINE_HEIGHT)),
-                    self.label_font,
-                    iced::alignment::Vertical::Center,
-                ));
-                self.large_label_text = Some(large_text);
-            }
+            self.large_label_paragraph = Some(large_paragraph);
+            self.large_label_text = Some(large_text);
         }
 
         let small_bounds = self
@@ -480,9 +396,6 @@ where
             .as_ref()
             .is_some_and(|badge| badge.label.is_some());
 
-        // Right edge of the badge in the fully expanded state. Used to size the
-        // item, so the width does not depend on the current expansion and stays
-        // stable while the rail animates.
         let mut expanded_badge_right = 0.0f32;
 
         let badge_node = self.badge.as_mut().map(|badge| {
@@ -494,9 +407,6 @@ where
             let icon_center_y = icon_y + ICON_SIZE / 2.0;
             let label_center_y = large_label_node.bounds().y + large_bounds.height / 2.0;
 
-            // The badge is drawn from the top-right corner of its base, so when
-            // collapsed it sits on the icon's top-right corner and when expanded
-            // it trails the end of the label.
             let (collapsed_x, expanded_x) = if has_label {
                 (icon_x, large_label_end - 8.0)
             } else {
@@ -536,9 +446,6 @@ where
         let mut node_size = Size::new(node_width, node_height);
         if let Some(node) = badge_node {
             if self.expanded {
-                // The badge trails the label and may be wider than the label's
-                // trailing padding. Grow the item (and therefore the auto-sized
-                // rail) so the badge is never drawn past the rail's edge.
                 if expanded_badge_right > node_size.width {
                     node_size.width = expanded_badge_right + INDICATOR_LARGE_PADDING;
                 }
@@ -588,11 +495,9 @@ where
             && let Some(label) = &self.small_label_paragraph
         {
             let mut bounds = Rectangle::new(
-                lerp_point(
-                    small_label_bounds.position(),
-                    large_label_bounds.position(),
-                    blend.travel,
-                ),
+                small_label_bounds
+                    .position()
+                    .interpolate(large_label_bounds.position(), blend.travel),
                 small_label_bounds.size(),
             );
 
@@ -686,7 +591,6 @@ where
             shell,
         );
 
-        // Spell out a label that had to be shortened, like the rail's other tooltips.
         let truncated = if self.expanded {
             self.large_label_truncated
         } else {

@@ -6,7 +6,6 @@ pub const EDGE_SPACING: f32 = 16.0;
 use crate::{
     style::Elevation,
     widget::{
-        Action,
         button::{self, CornerStyle},
         hybrid_icon::Icon,
         tooltip,
@@ -101,6 +100,12 @@ impl Size {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Tooltip {
+    pub style: tooltip::Style,
+    pub position: tooltip::Position,
+}
+
 #[derive(Clone)]
 pub enum Content<'a> {
     Reguar {
@@ -155,9 +160,9 @@ where
     pub style: Style,
     pub label_font: Option<Font>,
     pub label_size_scale: f32,
-    pub on_press: Action<'a, Message>,
-    /// Optional label and style shown in a tooltip on hover.
-    pub tooltip: Option<(text::Fragment<'a>, tooltip::Style)>,
+    pub on_press: Message,
+    /// Optional tooltip shown when the FAB is hovered.
+    pub tooltip: Option<(text::Fragment<'a>, Tooltip)>,
 }
 
 impl<'a, Message> Fab<'a, Message>
@@ -165,7 +170,7 @@ where
     Message: 'a + Clone,
 {
     #[must_use]
-    pub fn new(style: Style, content: Content<'a>, on_press: Action<'a, Message>) -> Self {
+    pub fn new(style: Style, content: Content<'a>, on_press: Message) -> Self {
         Self {
             content,
             size: Size::default(),
@@ -208,8 +213,8 @@ where
 
     /// Shows a tooltip with `label` when the [`Fab`] is hovered.
     #[must_use]
-    pub fn tooltip(mut self, label: impl IntoFragment<'a>, style: tooltip::Style) -> Self {
-        self.tooltip = Some((label.into_fragment(), style));
+    pub fn tooltip(mut self, label: impl IntoFragment<'a>, config: Tooltip) -> Self {
+        self.tooltip = Some((label.into_fragment(), config));
         self
     }
 
@@ -227,10 +232,7 @@ impl<'a, Message: 'a + Clone> Clone for Fab<'a, Message> {
             style: self.style,
             label_font: self.label_font,
             label_size_scale: self.label_size_scale,
-            on_press: match &self.on_press {
-                Action::Direct(msg) => Action::Direct(msg.clone()),
-                Action::Closure(_) => panic!("Fab::clone() does not support Action::Closure"),
-            },
+            on_press: self.on_press.clone(),
             tooltip: self.tooltip.clone(),
         }
     }
@@ -257,16 +259,12 @@ where
             ))
             .elevation(Elevation::Level3);
 
-        let button: Element<'a, Message, Theme, Renderer> = match value.on_press {
-            Action::Direct(on_press) => button.on_press(on_press),
-            Action::Closure(on_press) => button.on_press_with(on_press),
-        }
-        .into();
+        let button: Element<'a, Message, Theme, Renderer> = button.on_press(value.on_press).into();
 
-        if let Some((label, tooltip_style)) = value.tooltip {
-            crate::widget::tooltip(tooltip_style, button)
+        if let Some((label, config)) = value.tooltip {
+            crate::widget::tooltip(config.style, button)
                 .label(label)
-                .position(tooltip::Position::Right)
+                .position(config.position)
                 .into()
         } else {
             button

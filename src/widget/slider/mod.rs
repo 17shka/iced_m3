@@ -26,7 +26,7 @@ use crate::{
     theme::ColorScheme,
     widget::{
         hybrid_icon::Icon,
-        internal::motion::sync_spring_model,
+        internal::{geometry::expanded_bounds, motion::sync_spring_model},
         ripple::{Ripple, visible_clip},
     },
 };
@@ -64,20 +64,13 @@ const DISABLED_INDICATOR_OPACITY: f32 = crate::style::DISABLED_STATE_LAYER_OPACI
 const DRAG_CHASE_DECAY: f32 = 0.008;
 
 /// Velocity kick (in normalized spring units per second) added when a dragged
-/// handle settles onto its final value. It only produces a slight overshoot —
+/// handle settles onto an interior value. It only produces a slight overshoot —
 /// a visual wobble — and never changes the value itself.
 const DRAG_RELEASE_IMPULSE: f32 = 32.0;
 
 // Steps closer together than this many pixels make dragging follow the
 // cursor directly; coarser steps animate the handle to each snapped value.
 const MIN_PIXELS_PER_STEP: f64 = 12.0;
-
-const HUGE_VIEWPORT: Rectangle = Rectangle {
-    x: -1.0e6,
-    y: -1.0e6,
-    width: 2.0e6,
-    height: 2.0e6,
-};
 
 pub struct Size {
     pub track_height: f32,
@@ -352,17 +345,41 @@ fn animate_handle_spring<Message>(
     now: Instant,
     shell: &mut iced::advanced::Shell<'_, Message>,
 ) {
-    spring.set_target(target, now);
+    set_handle_target(spring, target, now);
     shell.request_redraw();
+}
+
+fn set_handle_target(spring: &mut SpringValue<f32>, target: f32, now: Instant) {
+    let target = target.clamp(0.0, 1.0);
+    if target <= 0.0 || target >= 1.0 {
+        spring.reset(target, now);
+    } else {
+        spring.set_target(target, now);
+    }
 }
 
 /// Settles a handle spring onto `target` after a drag release, nudging it with
 /// a small impulse so a fast flick ends with a slight wobble. Only the drawn
 /// position moves: the value is already final at this point.
 fn settle_handle_spring(spring: &mut SpringValue<f32>, target: f32, now: Instant) {
-    if spring.to != target {
+    if target <= 0.0 || target >= 1.0 {
+        spring.reset(target.clamp(0.0, 1.0), now);
+    } else if spring.to != target {
         spring.set_target(target, now);
         spring.spring.velocity = DRAG_RELEASE_IMPULSE;
+    }
+}
+
+/// Steps a handle spring, stopping it dead at the track edges so it never
+/// overshoots the end of the track and springs back.
+fn step_handle_spring(spring: &mut SpringValue<f32>, now: Instant) {
+    spring.step(now);
+
+    let value = spring.value();
+    if value <= 0.0 {
+        spring.reset(0.0, now);
+    } else if value >= 1.0 {
+        spring.reset(1.0, now);
     }
 }
 
@@ -471,7 +488,7 @@ impl<P: text::Paragraph> State<P> {
 
         self.common.step(now);
         self.handle_width_spring.step(now);
-        self.handle_position_spring.step(now);
+        step_handle_spring(&mut self.handle_position_spring, now);
         self.icon_start_visibility_spring.step(now);
         self.icon_end_visibility_spring.step(now);
     }
@@ -824,7 +841,7 @@ where
         let circle = handle_circle(self.axis, bounds, self.size.handle_height, handle_center);
 
         let interaction_bounds = if state.is_dragging {
-            huge_bounds(bounds)
+            expanded_bounds(bounds)
         } else {
             circle
         };
@@ -867,9 +884,11 @@ where
         // Sync the handle position spring with the current value, unless a
         // continuous drag is chasing the cursor (the chase owns the spring).
         if !(state.is_dragging && continuous_drag && state.drag_factor.is_some()) {
-            state
-                .handle_position_spring
-                .set_target(value_factor(self.value, &self.range), now);
+            set_handle_target(
+                &mut state.handle_position_spring,
+                value_factor(self.value, &self.range),
+                now,
+            );
         }
         state.handle_width_spring.set_target(
             match state.is_dragging {
@@ -956,7 +975,7 @@ where
         match event {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
             | Event::Touch(touch::Event::FingerPressed { .. }) => {
-                if !enabled {
+                if !enabled || shell.is_event_captured() {
                     return;
                 }
 
@@ -1132,6 +1151,9 @@ where
 
         let cross_center = cross_center(self.axis, bounds);
 
+        let active = self.active_main_range(len, handle_width, handle_center);
+        let inactive = self.inactive_main_ranges(len, handle_width, handle_center);
+
         draw_track(
             renderer,
             self.axis,
@@ -1142,8 +1164,8 @@ where
             self.size.corner_radius,
             enabled,
             style,
-            self.active_main_range(len, handle_width, handle_center),
-            &self.inactive_main_ranges(len, handle_width, handle_center),
+            active,
+            &inactive,
             self.stops,
             self.continuous_tick_count,
         );
@@ -1158,6 +1180,8 @@ where
                 }
             };
 
+            // The icons are pinned to the track ends; the handle is free to
+            // ride over them.
             if let Some(icon) = &self.inset_icon_start {
                 let center = track_height / 2.0;
                 draw_inset_icon(
@@ -1478,15 +1502,6 @@ fn rect_at(
             x: cross_start,
             width: cross_end - cross_start,
         },
-    }
-}
-
-pub(crate) fn huge_bounds(bounds: Rectangle) -> Rectangle {
-    Rectangle {
-        x: bounds.x - 1.0e6,
-        y: bounds.y - 1.0e6,
-        width: bounds.width + 2.0e6,
-        height: bounds.height + 2.0e6,
     }
 }
 
@@ -2250,7 +2265,7 @@ where
                             a: label.text_color.a * text_alpha,
                             ..label.text_color
                         },
-                        HUGE_VIEWPORT,
+                        self.clip,
                     );
                 }
             }
@@ -2432,6 +2447,48 @@ mod tests {
     }
 
     #[test]
+    fn inset_icons_stay_at_the_track_ends() {
+        let len = 200.0;
+        let track_height = 24.0;
+
+        let icon_start = track_height / 2.0;
+        let icon_end = len - track_height / 2.0;
+        assert_eq!(icon_start, 12.0);
+        assert_eq!(icon_end, 188.0);
+
+        let at_start = center_at(len, HANDLE_WIDTH_IDLE, 0.0);
+        let active = Segment::new(
+            0.0,
+            at_start - HANDLE_WIDTH_IDLE / 2.0 - HANDLE_GAP,
+            true,
+            false,
+        );
+        assert!(
+            !active
+                .valid()
+                .is_some_and(|active| active.contains(&icon_start))
+        );
+
+        let slightly_above = center_at(len, HANDLE_WIDTH_IDLE, 0.1);
+        let active = Segment::new(
+            0.0,
+            slightly_above - HANDLE_WIDTH_IDLE / 2.0 - HANDLE_GAP,
+            true,
+            false,
+        );
+        assert!(
+            active
+                .valid()
+                .is_some_and(|active| active.contains(&icon_start))
+        );
+        assert!(
+            !active
+                .valid()
+                .is_some_and(|active| active.contains(&icon_end))
+        );
+    }
+
+    #[test]
     fn label_follows_handle_only_while_the_spring_settles() {
         assert!(label_follows_handle(false, true));
         assert!(!label_follows_handle(false, false));
@@ -2449,10 +2506,36 @@ mod tests {
         settle_handle_spring(&mut spring, 0.0, now);
         assert_eq!(spring.spring.velocity, 0.0);
 
-        // Moving to a new target starts the settle animation with a small kick.
-        settle_handle_spring(&mut spring, 1.0, now);
-        assert_eq!(spring.to, 1.0);
+        // Interior values settle with a small kick.
+        settle_handle_spring(&mut spring, 0.5, now);
+        assert_eq!(spring.to, 0.5);
         assert_eq!(spring.spring.velocity, DRAG_RELEASE_IMPULSE);
         assert!(!spring.is_at_rest());
+
+        // Endpoints stop immediately without carrying spring velocity.
+        settle_handle_spring(&mut spring, 1.0, now);
+        assert_eq!(spring.value(), 1.0);
+        assert_eq!(spring.spring.velocity, 0.0);
+        assert!(spring.is_at_rest());
+    }
+
+    #[test]
+    fn stepping_stops_the_handle_at_the_track_edges() {
+        let now = Instant::now();
+        let spring_model = fast_spatial(motion::Scheme::default());
+
+        let mut spring = SpringValue::new(0.9, spring_model, now);
+        spring.set_target(1.0, now);
+        spring.spring.position = 1.2;
+        step_handle_spring(&mut spring, now);
+        assert_eq!(spring.value(), 1.0);
+        assert!(spring.is_at_rest());
+
+        let mut spring = SpringValue::new(0.1, spring_model, now);
+        spring.set_target(0.0, now);
+        spring.spring.position = 3.0;
+        step_handle_spring(&mut spring, now);
+        assert_eq!(spring.value(), 0.0);
+        assert!(spring.is_at_rest());
     }
 }

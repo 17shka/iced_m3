@@ -197,17 +197,15 @@ where
     ) -> iced::advanced::layout::Node {
         match self.content.icon(self.active) {
             Icon::Text { text, font } => {
-                let text: &str = text;
                 let icon_size = Pixels(ICON_SIZE);
                 let line_height = text::LineHeight::Absolute(icon_size);
-                let font = *font;
 
                 self.icon_paragraph.update(
                     text,
                     Size::INFINITE,
                     icon_size,
                     line_height,
-                    font.map(Renderer::Font::from),
+                    (*font).map(Renderer::Font::from),
                     iced::alignment::Vertical::Center,
                     || {
                         paragraph(
@@ -216,7 +214,7 @@ where
                             Size::INFINITE,
                             icon_size,
                             line_height,
-                            font,
+                            *font,
                             iced::alignment::Vertical::Center,
                         )
                     },

@@ -203,17 +203,14 @@ where
             );
 
             if let Icon::Text { text, font } = icon {
-                let text: &str = text;
                 let size = menu::constants::ITEM_ICON_SIZE;
                 let line_height = text::LineHeight::Absolute(size);
-                let font = *font;
-
                 self.leading_icon_paragraph.update(
                     text,
                     bounds,
                     size,
                     line_height,
-                    font,
+                    *font,
                     iced::alignment::Vertical::Top,
                     || {
                         crate::widget::internal::text::paragraph(
@@ -222,7 +219,7 @@ where
                             bounds,
                             size,
                             line_height,
-                            font,
+                            *font,
                             iced::alignment::Vertical::Top,
                         )
                     },
@@ -265,7 +262,6 @@ where
                 .unwrap_or_default();
 
         let supporting_text_bounds = self.data.supporting_text.as_ref().map(|text| {
-            let text: &str = text;
             let bounds = Size::new(
                 max_center_width,
                 menu::constants::ITEM_SUPPORTING_TEXT_LINE_HEIGHT.0,

@@ -39,7 +39,6 @@ enum Message {
     Badge(badges::Message),
     NavRail(::navrail::Message),
     Select(select::Message),
-    Localization(localization::Message),
     SystemTheme(Mode),
     FontsLoaded,
 }
@@ -66,7 +65,6 @@ struct State {
 
     shapes_page: shapes::Page,
     select_page: select::Page,
-    localization_page: localization::Page,
 }
 
 impl Default for State {
@@ -93,7 +91,6 @@ impl Default for State {
 
             shapes_page: shapes::Page::default(),
             select_page: select::Page::default(),
-            localization_page: localization::Page::default(),
         }
     }
 }
@@ -122,7 +119,6 @@ impl State {
             Message::Badge(msg) => self.badge_page.update(msg),
             Message::NavRail(msg) => self.navrail_page.update(msg),
             Message::Select(msg) => self.select_page.update(msg),
-            Message::Localization(msg) => self.localization_page.update(msg),
             Message::SystemTheme(mode) => self.theme.system_mode = mode,
             // Fonts are loaded asynchronously; this message exists so the app
             // redraws (and re-measures text) once they are available. Without
@@ -196,10 +192,6 @@ impl State {
             Tab::Shapes => self.shapes_page.view(&self.theme).map(Message::Shapes),
             Tab::Sliders => self.sliders_page.view(&self.theme).map(Message::Sliders),
             Tab::Switch => self.switch_page.view(&self.theme).map(Message::Switch),
-            Tab::Localization => self
-                .localization_page
-                .view(&self.theme)
-                .map(Message::Localization),
         };
 
         // The navigation rail page must not be wrapped in a scrollable: the
@@ -209,6 +201,7 @@ impl State {
         let body: Element<'_, Message> = match self.tab {
             Tab::NavRail => content,
             _ => scrollable(&self.theme, content)
+                .id(self.tab.name())
                 .spacing(16)
                 .width(Length::Fill)
                 .into(),
@@ -235,10 +228,6 @@ impl State {
     fn subscription(&self) -> Subscription<Message> {
         let page = match self.tab {
             Tab::Progress => self.progress_page.subscription().map(Message::Progress),
-            Tab::Localization => self
-                .localization_page
-                .subscription()
-                .map(Message::Localization),
             _ => Subscription::none(),
         };
 
@@ -250,8 +239,6 @@ impl State {
 }
 
 fn main() -> iced::Result {
-    localization::init();
-
     iced::application(
         || {
             (

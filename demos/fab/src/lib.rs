@@ -12,16 +12,9 @@ pub enum Message {
     Noop,
 }
 
+#[derive(Default)]
 pub struct Page {
     corner_style: button::CornerStyle,
-}
-
-impl Default for Page {
-    fn default() -> Self {
-        Self {
-            corner_style: button::CornerStyle::Rounded,
-        }
-    }
 }
 
 impl Page {
@@ -59,16 +52,22 @@ impl Page {
                     fab::Content::Reguar {
                         icon: add_icon.clone()
                     },
-                    Action::Direct(Message::Noop),
+                    Message::Noop,
                 )
                 .size(fab::Size::Regular)
-                .tooltip("Add", tooltip::Style::new(theme)),
+                .tooltip(
+                    "Add",
+                    fab::Tooltip {
+                        style: tooltip::Style::new(theme),
+                        position: tooltip::Position::Right,
+                    },
+                ),
                 fab(
                     fab::Style::fab_tonal(theme, Accent::Secondary),
                     fab::Content::Reguar {
                         icon: add_icon.clone()
                     },
-                    Action::Direct(Message::Noop),
+                    Message::Noop,
                 )
                 .size(fab::Size::Medium),
                 fab(
@@ -76,7 +75,7 @@ impl Page {
                     fab::Content::Reguar {
                         icon: add_icon.clone()
                     },
-                    Action::Direct(Message::Noop),
+                    Message::Noop,
                 )
                 .size(fab::Size::Large),
             ]
@@ -89,21 +88,21 @@ impl Page {
                     fab::Content::Reguar {
                         icon: add_icon.clone()
                     },
-                    Action::Direct(Message::Noop),
+                    Message::Noop,
                 ),
                 fab(
                     fab::Style::fab_tonal(theme, Accent::Secondary),
                     fab::Content::Reguar {
                         icon: add_icon.clone()
                     },
-                    Action::Direct(Message::Noop),
+                    Message::Noop,
                 ),
                 fab(
                     fab::Style::fab_vibrant(theme, Accent::Tertiary),
                     fab::Content::Reguar {
                         icon: add_icon.clone()
                     },
-                    Action::Direct(Message::Noop),
+                    Message::Noop,
                 ),
             ]
             .spacing(16)
@@ -116,7 +115,7 @@ impl Page {
                         icon: add_icon.clone(),
                         label: "Create".into(),
                     },
-                    Action::Direct(Message::Noop),
+                    Message::Noop,
                 ),
                 fab(
                     fab::Style::fab_tonal(theme, Accent::Secondary),
@@ -124,7 +123,7 @@ impl Page {
                         icon: edit_icon,
                         label: "Edit".into(),
                     },
-                    Action::Direct(Message::Noop),
+                    Message::Noop,
                 ),
             ]
             .spacing(16)
@@ -167,7 +166,7 @@ impl Page {
                     fab::Content::Reguar {
                         icon: add_icon.clone()
                     },
-                    Action::Direct(Message::Noop),
+                    Message::Noop,
                 )
                 .corner_style(self.corner_style),
                 fab(
@@ -175,7 +174,7 @@ impl Page {
                     fab::Content::Reguar {
                         icon: add_icon.clone()
                     },
-                    Action::Direct(Message::Noop),
+                    Message::Noop,
                 )
                 .corner_style(self.corner_style),
                 iced_m3::widget::button(

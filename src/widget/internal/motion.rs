@@ -23,12 +23,12 @@ pub(crate) fn sync_style_spring<S, T>(
     now: Instant,
 ) -> bool
 where
-    S: PartialEq + Copy,
+    S: PartialEq + Clone,
     T: Interpolable + Clone + PartialEq,
 {
     if !*style_checked && *last_style != style {
         style_spring.reset(target, now);
-        *last_style = style;
+        last_style.clone_from(&style);
         *style_checked = true;
         true
     } else {

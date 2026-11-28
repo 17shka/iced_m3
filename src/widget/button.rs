@@ -316,47 +316,47 @@ impl Style {
         }
     }
 
-    pub fn outlined(theme: &(impl ColorScheme + ?Sized), accent: Accent) -> Self {
+    pub fn outlined(theme: &(impl ColorScheme + ?Sized)) -> Self {
         let disabled = outlined_disabled_style(theme, Color::TRANSPARENT);
-        let disabled_selected = outlined_disabled_style(
-            theme,
-            theme.on_surface().scale_alpha(DISABLED_CONTAINER_OPACITY),
-        );
+        let disabled_selected = outlined_disabled_style(theme, theme.on_surface());
+        let regular = StateStyle {
+            container: Color::TRANSPARENT,
+            label: theme.on_surface(),
+            icon: theme.on_surface(),
+            outline: Outline {
+                width: 1.0,
+                color: theme.outline_variant(),
+            },
+        };
+        let unselected = StateStyle {
+            container: Color::TRANSPARENT,
+            label: theme.on_surface_variant(),
+            icon: theme.on_surface_variant(),
+            outline: Outline {
+                width: 1.0,
+                color: theme.on_surface_variant(),
+            },
+        };
+        let selected = StateStyle {
+            container: theme.surface_container_highest(),
+            label: theme.on_surface(),
+            icon: theme.on_surface(),
+            outline: Outline {
+                width: 1.0,
+                color: theme.outline_variant(),
+            },
+        };
         Self {
-            regular: StateStyle {
-                container: Color::TRANSPARENT,
-                label: accent.color(theme),
-                icon: accent.color(theme),
-                outline: Outline {
-                    width: 1.0,
-                    color: theme.outline_variant(),
-                },
-            },
-            unselected: StateStyle {
-                container: Color::TRANSPARENT,
-                label: theme.on_surface_variant(),
-                icon: theme.on_surface_variant(),
-                outline: Outline {
-                    width: 1.0,
-                    color: theme.on_surface_variant(),
-                },
-            },
-            selected: StateStyle {
-                container: accent.color(theme),
-                label: accent.on_color(theme),
-                icon: accent.on_color(theme),
-                outline: Outline {
-                    width: 1.0,
-                    color: theme.outline_variant(),
-                },
-            },
+            regular,
+            unselected,
+            selected,
             disabled,
             disabled_unselected: disabled,
             disabled_selected,
             elevation: ElevationStates::new(theme.shadow()),
-            state_layer: StateLayer::new(accent.color(theme)),
+            state_layer: StateLayer::new(theme.on_surface()),
             state_layer_unselected: StateLayer::new(theme.on_surface_variant()),
-            state_layer_selected: StateLayer::new(accent.on_color(theme)),
+            state_layer_selected: StateLayer::new(theme.on_surface()),
         }
     }
 
@@ -1188,7 +1188,12 @@ where
         _viewport: &Rectangle,
         _renderer: &Renderer,
     ) -> mouse::Interaction {
-        interaction::pointer_when(!self.is_disabled(), cursor, layout.bounds())
+        interaction::pointer_when(
+            !self.is_disabled(),
+            cursor,
+            layout.bounds(),
+            mouse::Interaction::Pointer,
+        )
     }
 
     fn size_hint(&self) -> iced::Size<Length> {

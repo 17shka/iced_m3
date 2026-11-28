@@ -1,5 +1,4 @@
 use std::{
-    borrow::Cow,
     cell::RefCell,
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
@@ -15,7 +14,7 @@ use iced::{
         mouse, overlay,
         renderer::Quad,
         svg,
-        text::{self, Paragraph, Text},
+        text::{self, Text},
         widget::tree::{self, Tree},
     },
     alignment::Vertical,
@@ -32,7 +31,10 @@ use crate::{
     widget::{
         common_icons,
         hybrid_icon::Icon,
-        internal::{focus::Focus as Blink, interaction, placement, scrollbar, text::paragraph},
+        internal::{
+            elide, focus::Focus as Blink, fuzzy::score as fuzzy_score, icon, interaction,
+            placement, scrollbar, text as internal_text,
+        },
         menu,
         text_input::{
             Action, ActionLabels, ContextMenu, ContextMenuHost, ContextMenuOverlay, Cursor,
@@ -155,9 +157,9 @@ pub struct Labels<'a> {
 impl Default for Labels<'_> {
     fn default() -> Self {
         Self {
-            search: Cow::Borrowed("Search"),
-            clear: Cow::Borrowed("Clear selection"),
-            clear_search: Cow::Borrowed("Clear search"),
+            search: "Search".into(),
+            clear: "Clear selection".into(),
+            clear_search: "Clear search".into(),
             actions: ActionLabels::default(),
         }
     }
@@ -188,6 +190,7 @@ where
     max_menu_height: f32,
     font: Option<Font>,
     labels: Labels<'a>,
+    tooltips_enabled: bool,
 }
 
 /// A single entry of a [`Select`]: either a selectable option or a separator.
@@ -321,6 +324,7 @@ where
             max_menu_height: constants::DEFAULT_MAX_MENU_HEIGHT.0,
             font: None,
             labels: Labels::default(),
+            tooltips_enabled: false,
         }
     }
 
@@ -450,6 +454,12 @@ where
         self
     }
 
+    #[must_use]
+    pub fn tooltips_enabled(mut self, enabled: bool) -> Self {
+        self.tooltips_enabled = enabled;
+        self
+    }
+
     fn selected_index(&self) -> Option<usize> {
         let selected = self.selected.as_ref()?;
 
@@ -550,67 +560,14 @@ fn text_width<Renderer>(
 where
     Renderer: text::Renderer,
 {
-    let line_height = text::LineHeight::default();
-
-    paragraph(
+    internal_text::width(
         renderer,
         content,
-        Size::new(f32::INFINITY, line_height.to_absolute(size).0),
         size,
-        line_height,
-        Some(font),
+        text::LineHeight::default(),
+        font,
         Vertical::Center,
     )
-    .min_bounds()
-    .width
-}
-
-/// Fits `content` into `max_width`, trimming it and appending an ellipsis when it overflows.
-fn ellipsize<Renderer>(
-    renderer: &Renderer,
-    content: &str,
-    max_width: f32,
-    size: Pixels,
-    font: Renderer::Font,
-) -> String
-where
-    Renderer: text::Renderer,
-{
-    if max_width <= 0.0 {
-        return String::new();
-    }
-
-    if text_width(renderer, content, size, font) <= max_width {
-        return content.to_owned();
-    }
-
-    const ELLIPSIS: char = '…';
-    let ellipsis_width = text_width(renderer, "…", size, font);
-
-    if ellipsis_width > max_width {
-        return String::new();
-    }
-
-    let mut boundaries: Vec<usize> = content.char_indices().map(|(index, _)| index).collect();
-    boundaries.push(content.len());
-
-    let mut fits = 0;
-    let mut overflows = boundaries.len() - 1;
-
-    while overflows - fits > 1 {
-        let middle = (fits + overflows) / 2;
-        let candidate = content[..boundaries[middle]].trim_end();
-
-        if text_width(renderer, candidate, size, font) + ellipsis_width <= max_width {
-            fits = middle;
-        } else {
-            overflows = middle;
-        }
-    }
-
-    let mut truncated = content[..boundaries[fits]].trim_end().to_owned();
-    truncated.push(ELLIPSIS);
-    truncated
 }
 
 const FIT_CACHE_CAPACITY: usize = 64;
@@ -654,7 +611,17 @@ impl FitCache {
             return entry.fitted.clone();
         }
 
-        let fitted = ellipsize(renderer, content, max_width, size, font);
+        let line_height = text::LineHeight::default();
+        let (fitted, _) = elide::elide(content, max_width, |candidate| {
+            internal_text::width(
+                renderer,
+                candidate,
+                size,
+                line_height,
+                font,
+                Vertical::Center,
+            )
+        });
 
         if entries.len() >= FIT_CACHE_CAPACITY {
             entries.remove(0);
@@ -669,152 +636,6 @@ impl FitCache {
         });
 
         fitted
-    }
-}
-
-fn draw_icon<Renderer>(
-    renderer: &mut Renderer,
-    handle: &svg::Handle,
-    center: Point,
-    size: Pixels,
-    rotation: Radians,
-    color: Color,
-    opacity: f32,
-    clip: Rectangle,
-) where
-    Renderer: svg::Renderer,
-{
-    let half = size.0 / 2.0;
-    let bounds = Rectangle::new(
-        Point::new(center.x - half, center.y - half),
-        Size::new(size.0, size.0),
-    );
-
-    let opacity = opacity * color.a;
-    let color = Color { a: 1.0, ..color };
-
-    renderer.draw_svg(
-        svg::Svg {
-            handle: handle.clone(),
-            color: Some(color),
-            rotation,
-            opacity,
-        },
-        bounds,
-        clip,
-    );
-}
-
-/// Draws an option icon, whichever kind it is, centered on `center`.
-fn draw_hybrid_icon<Renderer>(
-    renderer: &mut Renderer,
-    icon: &Icon<'_>,
-    center: Point,
-    size: Pixels,
-    color: Color,
-    clip: Rectangle,
-) where
-    Renderer: text::Renderer<Font = iced::Font> + svg::Renderer,
-{
-    match icon {
-        Icon::Svg(handle) => {
-            draw_icon(
-                renderer,
-                handle,
-                center,
-                size,
-                Radians(0.0),
-                color,
-                1.0,
-                clip,
-            );
-        }
-        Icon::Text { text, font } => {
-            let half = size.0 / 2.0;
-            let extent = Size::new(size.0, size.0);
-            let bounds = Rectangle::new(Point::new(center.x - half, center.y - half), extent);
-
-            renderer.fill_text(
-                Text {
-                    content: text.to_string(),
-                    bounds: extent,
-                    size,
-                    line_height: text::LineHeight::Absolute(size),
-                    font: font.unwrap_or_else(|| renderer.default_font()),
-                    align_x: text::Alignment::Center,
-                    align_y: Vertical::Center,
-                    shaping: text::Shaping::Advanced,
-                    wrapping: text::Wrapping::None,
-                },
-                bounds.center(),
-                color,
-                clip,
-            );
-        }
-    }
-}
-
-fn fuzzy_score(query: &str, candidate: &str) -> Option<i32> {
-    if query.is_empty() {
-        return Some(0);
-    }
-
-    let query: Vec<char> = query.chars().flat_map(char::to_lowercase).collect();
-    let candidate: Vec<char> = candidate.chars().flat_map(char::to_lowercase).collect();
-
-    if query.len() > candidate.len() {
-        return None;
-    }
-
-    if let Some(position) = find_subslice(&candidate, &query) {
-        let mut score = 1_000;
-
-        if position == 0 {
-            score += 300;
-        } else if !candidate[position - 1].is_alphanumeric() {
-            score += 150;
-        }
-
-        score -= position as i32;
-        score -= (candidate.len() - query.len()).min(100) as i32;
-
-        return Some(score);
-    }
-
-    let mut query_index = 0;
-    let mut score = 0;
-    let mut previous = None;
-
-    for (index, &character) in candidate.iter().enumerate() {
-        if character != query[query_index] {
-            continue;
-        }
-
-        score += 10;
-
-        if index == 0 || !candidate[index - 1].is_alphanumeric() {
-            score += 20;
-        }
-
-        match previous {
-            Some(previous) if index == previous + 1 => score += 15,
-            Some(_) => score -= 5,
-            None => score -= index.min(20) as i32,
-        }
-
-        previous = Some(index);
-        query_index += 1;
-
-        if query_index == query.len() {
-            break;
-        }
-    }
-
-    if query_index == query.len() {
-        score -= (candidate.len().min(40) / 4) as i32;
-        Some(score)
-    } else {
-        None
     }
 }
 
@@ -838,16 +659,6 @@ fn order_options<T>(query: &str, items: &[Item<T>]) -> Vec<(usize, bool)> {
         .into_iter()
         .map(|(index, _, matched)| (index, matched))
         .collect()
-}
-
-fn find_subslice(haystack: &[char], needle: &[char]) -> Option<usize> {
-    if needle.is_empty() {
-        return Some(0);
-    }
-
-    haystack
-        .windows(needle.len())
-        .position(|window| window == needle)
 }
 
 impl<'a, T, Message, Theme, Renderer> Widget<Message, Theme, Renderer> for Select<'a, T, Message>
@@ -970,7 +781,7 @@ where
         if icon_slot > 0.0
             && let Some(icon) = selected.and_then(Item::icon_ref)
         {
-            draw_hybrid_icon(
+            icon::draw_hybrid_icon(
                 renderer,
                 icon,
                 Point::new(
@@ -1023,7 +834,7 @@ where
             progress,
         );
 
-        draw_icon(
+        icon::draw_svg_icon(
             renderer,
             &common_icons::ARROW_RIGHT,
             Self::arrow_center(bounds),
@@ -1036,7 +847,7 @@ where
         );
 
         if self.show_clear() {
-            draw_icon(
+            icon::draw_svg_icon(
                 renderer,
                 &common_icons::CLOSE,
                 Self::clear_center(bounds),
@@ -1082,7 +893,7 @@ where
         // Both field tooltips (the clear button and the truncated value) share the field's hover
         // delay. They are suppressed while the menu is open. The cross is a target of its own, so
         // hovering it always waits for the delay instead of reusing the timer of the field body.
-        let tooltip_target = if is_clear_hovered {
+        let tooltip_target = if self.tooltips_enabled && is_clear_hovered {
             Self::clear_bounds(bounds)
         } else {
             bounds
@@ -1136,7 +947,7 @@ where
         _viewport: &Rectangle,
         _renderer: &Renderer,
     ) -> mouse::Interaction {
-        interaction::pointer_when(true, cursor, layout.bounds())
+        interaction::pointer_when(true, cursor, layout.bounds(), mouse::Interaction::Pointer)
     }
 
     fn overlay<'b>(
@@ -1159,7 +970,7 @@ where
 
         let tooltip = if menu_open || !state.field_tooltip.is_open() {
             None
-        } else if state.clear_hovered {
+        } else if self.tooltips_enabled && state.clear_hovered {
             // The clear button is icon-only, so spell out what it does.
             let center = Self::clear_center(anchor_bounds);
             let size = constants::CLEAR_ICON_SIZE.0;
@@ -1247,6 +1058,7 @@ where
                 max_menu_height: self.max_menu_height,
                 font: self.font,
                 labels: self.labels.clone(),
+                tooltips_enabled: self.tooltips_enabled,
             };
 
             // The menu's tooltip is a sibling of the surface and not one of its nested overlays:
@@ -1377,7 +1189,7 @@ impl Default for State {
             dragging: None,
             geometry: None,
             context_menu: None,
-            blink: Blink::default(),
+            blink: Blink::new(now),
             field_tooltip: tooltip::Hover::default(),
             menu_tooltip: tooltip::Hover::default(),
             fit: FitCache::default(),
@@ -1406,8 +1218,9 @@ impl State {
         self.dragging = None;
         self.geometry = None;
         self.context_menu = None;
-        self.blink = Blink::default();
-        self.progress.set_target(1.0, Instant::now());
+        let now = Instant::now();
+        self.blink = Blink::new(now);
+        self.progress.set_target(1.0, now);
     }
 
     fn close(&mut self) {
@@ -1442,7 +1255,7 @@ impl State {
     }
 
     /// Clears the search query and resets its caret, selection and history.
-    fn reset_query(&mut self) {
+    fn reset_query(&mut self, now: Instant) {
         self.query = Value::new("");
         self.cursor = Cursor::default();
         self.history.reset("");
@@ -1451,18 +1264,23 @@ impl State {
         self.hovered_item = None;
         self.search_clear_hovered = false;
 
-        self.restart_blink();
+        self.restart_blink(now);
     }
 
     /// Restarts the caret blink so it is visible right after an interaction, like a text input.
-    fn restart_blink(&mut self) {
-        self.blink.restart();
+    fn restart_blink(&mut self, now: Instant) {
+        self.blink.restart(now);
     }
 
     /// Applies an edit to the query through the same pipeline as the text input.
     ///
     /// Returns `true` when the query changed.
-    fn edit_query(&mut self, kind: EditKind, change: impl FnOnce(&mut Editor<'_>)) -> bool {
+    fn edit_query(
+        &mut self,
+        now: Instant,
+        kind: EditKind,
+        change: impl FnOnce(&mut Editor<'_>),
+    ) -> bool {
         let before = self.query.to_string();
 
         let contents = edit_value(
@@ -1481,7 +1299,7 @@ impl State {
         // the list back to the top while typing. The row under the pointer no longer holds the
         // same option, so drop the stale hover.
         self.hovered_item = None;
-        self.restart_blink();
+        self.restart_blink(now);
 
         true
     }
@@ -1504,6 +1322,7 @@ struct Overlay<'a, T, Message> {
     max_menu_height: f32,
     font: Option<Font>,
     labels: Labels<'a>,
+    tooltips_enabled: bool,
 }
 
 /// A tooltip the open menu wants to show, described so `Select::overlay` can draw it outside the
@@ -1756,7 +1575,7 @@ impl<T, Message> Overlay<'_, T, Message> {
     where
         Renderer: text::Renderer<Font = Font>,
     {
-        if self.state.search_clear_hovered {
+        if self.state.search_clear_hovered && self.tooltips_enabled {
             return self.search_clear_bounds(bounds);
         }
 
@@ -1799,7 +1618,8 @@ impl<T, Message> Overlay<'_, T, Message> {
         let bounds = self.state.geometry?.rect;
 
         // The search field's clear button is icon-only, so spell out what it does.
-        if self.state.search_clear_hovered
+        if self.tooltips_enabled
+            && self.state.search_clear_hovered
             && let Some(clear) = self.search_clear_bounds(bounds)
         {
             return Some(MenuTooltip {
@@ -1932,6 +1752,7 @@ impl<T, Message> Overlay<'_, T, Message> {
         text: Option<&str>,
         modifiers: keyboard::Modifiers,
         clipboard: &mut dyn Clipboard,
+        now: Instant,
     ) -> bool {
         use keyboard::key::Named;
 
@@ -1969,7 +1790,7 @@ impl<T, Message> Overlay<'_, T, Message> {
                 Some('x') => {
                     self.copy_query(clipboard);
                     self.state
-                        .edit_query(EditKind::Other, |editor| editor.delete());
+                        .edit_query(now, EditKind::Other, |editor| editor.delete());
 
                     return true;
                 }
@@ -1981,8 +1802,9 @@ impl<T, Message> Overlay<'_, T, Message> {
                         .filter(|character| !character.is_control())
                         .collect();
 
-                    self.state
-                        .edit_query(EditKind::Other, |editor| editor.paste(Value::new(&content)));
+                    self.state.edit_query(now, EditKind::Other, |editor| {
+                        editor.paste(Value::new(&content))
+                    });
 
                     return true;
                 }
@@ -2002,7 +1824,7 @@ impl<T, Message> Overlay<'_, T, Message> {
                     return false;
                 }
 
-                self.state.reset_query();
+                self.state.reset_query(now);
             }
             keyboard::Key::Named(Named::Backspace) => {
                 if self.state.cursor.selection(&self.state.query).is_none() {
@@ -2015,7 +1837,7 @@ impl<T, Message> Overlay<'_, T, Message> {
                 }
 
                 self.state
-                    .edit_query(EditKind::Delete, |editor| editor.backspace());
+                    .edit_query(now, EditKind::Delete, |editor| editor.backspace());
             }
             keyboard::Key::Named(Named::Delete) => {
                 if self.state.cursor.selection(&self.state.query).is_none() {
@@ -2029,7 +1851,7 @@ impl<T, Message> Overlay<'_, T, Message> {
                 }
 
                 self.state
-                    .edit_query(EditKind::Delete, |editor| editor.delete());
+                    .edit_query(now, EditKind::Delete, |editor| editor.delete());
             }
             keyboard::Key::Named(Named::Home) => {
                 self.state.history.break_group();
@@ -2101,7 +1923,7 @@ impl<T, Message> Overlay<'_, T, Message> {
             }
             keyboard::Key::Named(Named::Space) => {
                 self.state
-                    .edit_query(EditKind::Insert, |editor| editor.insert(' '));
+                    .edit_query(now, EditKind::Insert, |editor| editor.insert(' '));
             }
             keyboard::Key::Character(_) => {
                 if modifiers.control() || modifiers.alt() || modifiers.logo() {
@@ -2112,7 +1934,7 @@ impl<T, Message> Overlay<'_, T, Message> {
                 match text.and_then(|text| text.chars().find(|character| !character.is_control())) {
                     Some(character) => {
                         self.state
-                            .edit_query(EditKind::Insert, |editor| editor.insert(character));
+                            .edit_query(now, EditKind::Insert, |editor| editor.insert(character));
                     }
                     None => return false,
                 }
@@ -2323,7 +2145,7 @@ where
                 fade(self.style.separator),
             );
 
-            draw_icon(
+            icon::draw_svg_icon(
                 renderer,
                 &common_icons::SEARCH,
                 Point::new(
@@ -2431,7 +2253,7 @@ where
             }
 
             if self.search_clear_visible() {
-                draw_icon(
+                icon::draw_svg_icon(
                     renderer,
                     &common_icons::CLOSE,
                     self.search_clear_center(bounds),
@@ -2542,7 +2364,7 @@ where
                 );
 
                 if let Some(icon) = self.items[index].icon_ref() {
-                    draw_hybrid_icon(
+                    icon::draw_hybrid_icon(
                         renderer,
                         icon,
                         slot_center,
@@ -2651,7 +2473,7 @@ where
                 self.state.blink.is_window_focused = true;
 
                 if self.state.search_focused {
-                    self.state.restart_blink();
+                    self.state.restart_blink(now);
                     shell.request_redraw();
                 }
             }
@@ -2775,7 +2597,7 @@ where
 
                     self.state.search_focused = true;
                     self.state.history.break_group();
-                    self.state.restart_blink();
+                    self.state.restart_blink(now);
 
                     shell.request_redraw();
                     shell.capture_event();
@@ -2809,7 +2631,7 @@ where
                         .search_clear_bounds(bounds)
                         .is_some_and(|clear| clear.contains(position))
                     {
-                        self.state.reset_query();
+                        self.state.reset_query(now);
                         self.state.search_focused = true;
                         self.state.history.break_group();
                         shell.request_redraw();
@@ -2853,7 +2675,7 @@ where
                     self.state.search_focused = true;
                     self.state.last_click = Some(click);
                     self.state.history.break_group();
-                    self.state.restart_blink();
+                    self.state.restart_blink(now);
                     shell.request_redraw();
                     shell.capture_event();
                 } else if let Some(rail) = self.scrollbar(bounds)
@@ -2909,10 +2731,11 @@ where
                         text.as_deref(),
                         *modifiers,
                         clipboard,
+                        now,
                     );
 
                     if consumed {
-                        self.state.restart_blink();
+                        self.state.restart_blink(now);
                         shell.request_redraw();
                         shell.capture_event();
                         return;
@@ -2961,7 +2784,7 @@ where
                 }
 
                 self.state.history.break_group();
-                self.state.restart_blink();
+                self.state.restart_blink(now);
                 shell.request_redraw();
                 shell.capture_event();
             }
@@ -3084,26 +2907,28 @@ impl<Message, Renderer> ContextMenuHost<Message, Renderer> for SearchContext<'_>
 
     fn delete_selection(&mut self, _renderer: &Renderer) -> Option<Message> {
         self.state
-            .edit_query(EditKind::Other, |editor| editor.delete());
+            .edit_query(Instant::now(), EditKind::Other, |editor| editor.delete());
 
         None
     }
 
     fn paste(&mut self, content: Value, _renderer: &Renderer) -> Option<Message> {
         self.state
-            .edit_query(EditKind::Other, |editor| editor.paste(content));
+            .edit_query(Instant::now(), EditKind::Other, |editor| {
+                editor.paste(content)
+            });
 
         None
     }
 
     fn undo(&mut self, _renderer: &Renderer) -> Option<Message> {
-        self.history_step(false);
+        self.history_step(Instant::now(), false);
 
         None
     }
 
     fn redo(&mut self, _renderer: &Renderer) -> Option<Message> {
-        self.history_step(true);
+        self.history_step(Instant::now(), true);
 
         None
     }
@@ -3134,7 +2959,7 @@ impl<Message, Renderer> ContextMenuHost<Message, Renderer> for SearchContext<'_>
 }
 
 impl SearchContext<'_> {
-    fn history_step(&mut self, is_redo: bool) {
+    fn history_step(&mut self, now: Instant, is_redo: bool) {
         let current = self.state.query.to_string();
         let cursor = self.state.cursor;
 
@@ -3148,14 +2973,14 @@ impl SearchContext<'_> {
             self.state.query = Value::new(&snapshot.value);
             self.state.cursor = snapshot.cursor;
             self.state.hovered_item = None;
-            self.state.restart_blink();
+            self.state.restart_blink(now);
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Item, find_subslice, fuzzy_score, order_options};
+    use super::{Item, fuzzy_score, order_options};
 
     fn options<'a>(candidates: &[&'a str]) -> Vec<Item<&'a str>> {
         candidates
@@ -3253,15 +3078,6 @@ mod tests {
     fn non_matching_options_are_disabled() {
         assert_eq!(disabled("op", &["opaque", "stop", "top", "zoom"]), ["zoom"]);
         assert!(disabled("", &["opaque", "zoom"]).is_empty());
-    }
-
-    #[test]
-    fn find_subslice_works() {
-        let haystack: Vec<char> = "Option 10".chars().collect();
-        let needle: Vec<char> = "10".chars().collect();
-
-        assert_eq!(find_subslice(&haystack, &needle), Some(7));
-        assert_eq!(find_subslice(&haystack, &['x']), None);
     }
 
     #[test]

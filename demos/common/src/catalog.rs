@@ -26,7 +26,6 @@ pub enum Tab {
     Shapes,
     Sliders,
     Switch,
-    Localization,
 }
 
 impl Tab {
@@ -49,7 +48,6 @@ impl Tab {
         Self::Shapes,
         Self::Sliders,
         Self::Switch,
-        Self::Localization,
     ];
 
     /// Position of the page in [`Tab::ALL`].
@@ -77,7 +75,6 @@ impl Tab {
             Self::Shapes => "Shapes",
             Self::Sliders => "Sliders",
             Self::Switch => "Switch",
-            Self::Localization => "Localization",
         }
     }
 
@@ -101,7 +98,6 @@ impl Tab {
             Self::Shapes => "interests",
             Self::Sliders => "tune",
             Self::Switch => "toggle_on",
-            Self::Localization => "translate",
         }
     }
 }

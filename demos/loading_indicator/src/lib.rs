@@ -1,8 +1,9 @@
+use common::section_header;
 use iced::{
     Alignment, Element,
-    widget::{column, row, text},
+    widget::{column, row},
 };
-use iced_m3::theme::{ColorScheme, Theme};
+use iced_m3::theme::Theme;
 
 #[derive(Clone)]
 pub enum Message {
@@ -21,10 +22,7 @@ impl Page {
 
     pub fn view(&self, theme: &Theme) -> Element<'_, Message> {
         column![
-            text("Circular loading indicators")
-                .font(fonts::text_bold())
-                .size(18.0)
-                .color(theme.on_surface()),
+            section_header("Circular loading indicators", theme),
             row![
                 iced_m3::widget::loading_indicator(
                     iced_m3::widget::loading_indicator::Style::contained(theme)
@@ -35,10 +33,7 @@ impl Page {
             ]
             .spacing(16)
             .align_y(Alignment::Center),
-            text("Circular spinner")
-                .font(fonts::text_bold())
-                .size(18.0)
-                .color(theme.on_surface()),
+            section_header("Circular spinner", theme),
             row![
                 iced_m3::widget::circular_loading_indicator(
                     iced_m3::widget::loading_indicator::Style::contained(theme)

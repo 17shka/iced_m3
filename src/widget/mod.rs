@@ -14,7 +14,6 @@ pub mod fab;
 pub mod fab_menu;
 pub mod hybrid_icon;
 pub(crate) mod internal;
-#[cfg(feature = "shapes")]
 pub mod loading_indicator;
 pub mod menu;
 pub mod navbar;
@@ -41,8 +40,9 @@ use std::ops::RangeInclusive;
 
 use iced::{Color, Element, Font, Pixels};
 
+use crate::widget::loading_indicator::CircularLoadingIndicator;
 #[cfg(feature = "shapes")]
-use crate::widget::loading_indicator::{CircularLoadingIndicator, LoadingIndicator};
+use crate::widget::loading_indicator::LoadingIndicator;
 use crate::{
     theme::ColorScheme,
     widget::{
@@ -177,7 +177,7 @@ pub fn progress_bar(style: progress_bar::Style) -> ProgressBar {
 pub fn fab<'a, Message>(
     style: fab::Style,
     content: fab::Content<'a>,
-    on_press: Action<'a, Message>,
+    on_press: Message,
 ) -> Fab<'a, Message>
 where
     Message: 'a + Clone,
@@ -198,7 +198,7 @@ where
 
 #[must_use]
 pub fn navrail<'a, Message, Theme, Renderer>(
-    theme: &impl ColorScheme,
+    theme: &(impl ColorScheme + ?Sized),
     style: navrail::Style,
     items: Vec<navrail::Item<'a, Message>>,
 ) -> NavRail<'a, Message, Theme, Renderer>
@@ -213,9 +213,14 @@ where
 }
 
 #[must_use]
-pub fn switch<Message>(style: switch::Style, toggled: bool) -> Switch<Message>
+pub fn switch<'a, Message, Theme, Renderer>(
+    style: switch::Style,
+    toggled: bool,
+) -> Switch<Message, Theme, Renderer>
 where
-    Message: Clone,
+    Message: 'a + Clone,
+    Theme: 'a,
+    Renderer: 'a + iced::advanced::svg::Renderer + iced_widget::renderer::geometry::Renderer,
 {
     Switch::new(style, toggled)
 }
@@ -265,6 +270,7 @@ pub fn tooltip<'a, Message, Theme, Renderer>(
 ) -> tooltip::Tooltip<'a, Message, Theme, Renderer>
 where
     Renderer: 'a + iced::advanced::text::Renderer,
+    Renderer::Font: From<iced::Font>,
 {
     tooltip::Tooltip::new(style, base)
 }
@@ -289,7 +295,6 @@ pub fn loading_indicator(style: loading_indicator::Style) -> LoadingIndicator {
 }
 
 /// A classic indeterminate circular spinner.
-#[cfg(feature = "shapes")]
 #[must_use]
 pub fn circular_loading_indicator(style: loading_indicator::Style) -> CircularLoadingIndicator {
     CircularLoadingIndicator::new(style)
@@ -311,6 +316,7 @@ where
 }
 
 /// A small set of SVG icons bundled with the library.
+#[cfg(feature = "icons")]
 pub mod icons {
     pub use super::common_icons::*;
 }

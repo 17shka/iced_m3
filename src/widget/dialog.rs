@@ -1,26 +1,10 @@
-use iced::{
-    Alignment, Border, Color, Element, Event, Font, Length, Padding, Pixels, Point, Rectangle,
-    Size, Transformation, Vector,
-    advanced::{
-        Clipboard, Layout, Renderer as _, Shell, Widget,
-        layout::{Limits, Node},
-        mouse, overlay,
-        renderer::{self, Quad},
-        text,
-        widget::{Operation, Tree, tree},
-    },
-    color,
-    time::Instant,
-    touch,
-};
+use iced::{Alignment, Border, Color, Element, Font, Length, Padding, Pixels, advanced::text};
 use iced_widget::{column, container, row, space, text::IntoFragment};
-use std::borrow::Cow;
 
 use crate::{
-    animation::motion::{self, Spring, SpringValue},
     style::{Elevation, StateLayer},
     theme::{Accent, ColorScheme},
-    widget::{button, common_icons, hybrid_icon::Icon, icon, internal::placement, tooltip},
+    widget::{button, common_icons, hybrid_icon::Icon, icon, tooltip},
 };
 
 mod constants {
@@ -36,18 +20,8 @@ const ICON_TITLE_SPACING: f32 = 16.0;
 const TITLE_BODY_SPACING: f32 = 16.0;
 const BODY_BUTTONS_SPACING: f32 = 24.0;
 const BUTTON_SPACING: f32 = 8.0;
-
-/// Opacity of the scrim behind an open dialog.
-const SCRIM_ALPHA: f32 = 0.4;
 const CLOSE_BUTTON_SIZE: f32 = 48.0;
 const CLOSE_ICON_SIZE: f32 = 24.0;
-
-/// Progress below which a closed dialog is considered fully hidden.
-///
-/// Springs come to rest slightly off their target, so the dialog must be
-/// dropped before its progress reaches exactly `0.0` to avoid an invisible
-/// overlay that would keep blocking input.
-const HIDDEN_PROGRESS: f32 = 0.001;
 
 #[cfg(feature = "pub-internal-const")]
 pub use constants::*;
@@ -104,7 +78,7 @@ pub struct Labels<'a> {
 impl Default for Labels<'_> {
     fn default() -> Self {
         Self {
-            close: Cow::Borrowed("Close"),
+            close: "Close".into(),
         }
     }
 }
@@ -120,14 +94,10 @@ pub struct Dialog<'a, Message> {
     button_label_font: Option<Font>,
     width: Option<f32>,
     height: Option<f32>,
-    on_press_outside: Option<Message>,
     close: Option<Message>,
     fullscreen: bool,
-    open: bool,
-    spring: Option<Spring>,
-    scheme: motion::Scheme,
-    speed: motion::Speed,
     labels: Labels<'a>,
+    tooltips_enabled: bool,
 }
 
 impl<'a, Message> Dialog<'a, Message> {
@@ -148,14 +118,10 @@ impl<'a, Message> Dialog<'a, Message> {
             button_label_font: None,
             width: None,
             height: None,
-            on_press_outside: None,
             close: None,
             fullscreen: false,
-            open: true,
-            spring: None,
-            scheme: motion::Scheme::default(),
-            speed: motion::Speed::default(),
             labels: Labels::default(),
+            tooltips_enabled: false,
         }
     }
 
@@ -213,17 +179,7 @@ impl<'a, Message> Dialog<'a, Message> {
 
     crate::macros::maybe_assign!(height_maybe, height, Option<f32>);
 
-    #[must_use]
-    pub fn on_press_outside(mut self, on_press: Message) -> Self {
-        self.on_press_outside = Some(on_press);
-        self
-    }
-
-    crate::macros::maybe_assign!(on_press_outside_maybe, on_press_outside, Option<Message>);
-
     /// Sets the message produced by the close button of a fullscreen dialog.
-    ///
-    /// When unset, the close button falls back to [`Dialog::on_press_outside`].
     #[must_use]
     pub fn on_close(mut self, on_close: Message) -> Self {
         self.close = Some(on_close);
@@ -232,41 +188,12 @@ impl<'a, Message> Dialog<'a, Message> {
 
     crate::macros::maybe_assign!(on_close_maybe, close, Option<Message>);
 
-    /// Makes the dialog cover the whole window.
-    ///
-    /// A fullscreen dialog has no rounded corners, keeps its title in a header
-    /// row and shows a close button on the right of that row.
+    /// Makes the dialog surface fill the space allocated by its parent.
     #[must_use]
     pub fn fullscreen(mut self, fullscreen: bool) -> Self {
         self.fullscreen = fullscreen;
         self
     }
-
-    #[must_use]
-    pub fn open(mut self, open: bool) -> Self {
-        self.open = open;
-        self
-    }
-
-    #[must_use]
-    pub fn motion_scheme(mut self, scheme: motion::Scheme) -> Self {
-        self.scheme = scheme;
-        self
-    }
-
-    #[must_use]
-    pub fn speed(mut self, speed: motion::Speed) -> Self {
-        self.speed = speed;
-        self
-    }
-
-    #[must_use]
-    pub fn spring(mut self, spring: Spring) -> Self {
-        self.spring = Some(spring);
-        self
-    }
-
-    crate::macros::maybe_assign!(spring_maybe, spring, Option<Spring>);
 
     #[must_use]
     pub fn labels(mut self, labels: Labels<'a>) -> Self {
@@ -277,6 +204,12 @@ impl<'a, Message> Dialog<'a, Message> {
     #[must_use]
     pub fn close_label(mut self, label: impl IntoFragment<'a>) -> Self {
         self.labels.close = label.into_fragment();
+        self
+    }
+
+    #[must_use]
+    pub fn tooltips_enabled(mut self, enabled: bool) -> Self {
+        self.tooltips_enabled = enabled;
         self
     }
 }
@@ -297,14 +230,10 @@ where
             button_label_font,
             width,
             height,
-            on_press_outside,
             close,
             fullscreen,
-            open,
-            spring,
-            scheme,
-            speed,
             labels,
+            tooltips_enabled,
         } = value;
 
         let Style {
@@ -343,10 +272,7 @@ where
         .spacing(BUTTON_SPACING);
 
         let surface: Element<'a, Message> = if fullscreen {
-            // A fullscreen dialog covers the whole window, so it has no rounded
-            // corners and keeps its title and close button in a header row.
-            let close_message = close.or_else(|| on_press_outside.clone());
-            let close_button = close_message.map(|on_press| {
+            let close_button = close.map(|on_press| {
                 crate::widget::button(
                     close_button_style,
                     button::Content::Icon(Icon::Svg(common_icons::CLOSE.clone())),
@@ -370,11 +296,15 @@ where
             }
             header_items.push(space().width(Length::Fill).into());
             if let Some(close_button) = close_button {
-                header_items.push(
+                let close_button: Element<'a, Message> = if tooltips_enabled {
                     crate::widget::tooltip(tooltip_style, close_button)
                         .label(labels.close)
-                        .into(),
-                );
+                        .into()
+                } else {
+                    close_button.into()
+                };
+
+                header_items.push(close_button);
             }
 
             let header = row(header_items)
@@ -387,7 +317,6 @@ where
                 .height(Length::Fill);
 
             if buttons_present {
-                // Push the actions to the bottom of the window.
                 content = content.push(space().height(Length::Fill));
             }
             content = content.push(buttons);
@@ -409,8 +338,7 @@ where
                 Alignment::Start
             };
 
-            let column = column![
-                // A little hack to enforce the min width
+            let content = column![
                 space().width(constants::MIN_WIDTH),
                 icon_element.map(|icon| column![icon, space().height(ICON_TITLE_SPACING)]),
                 title_element.map(|title| column![title, space().height(TITLE_BODY_SPACING)]),
@@ -420,7 +348,7 @@ where
             ]
             .align_x(alignment);
 
-            let dialog = container(column)
+            let dialog = container(content)
                 .padding(PADDING)
                 .style(move |_| {
                     iced_widget::container::Style::default()
@@ -445,357 +373,6 @@ where
             dialog.into()
         };
 
-        // An explicit spring wins; otherwise pick a ready-made one from the
-        // configured speed and motion scheme.
-        let spring = spring.unwrap_or_else(|| speed.spatial(scheme));
-
-        Element::new(DialogWidget {
-            surface,
-            fullscreen,
-            open,
-            on_press_outside,
-            spring,
-        })
-    }
-}
-
-struct State {
-    progress: SpringValue<f32>,
-    surface_tree: Option<Tree>,
-}
-
-struct DialogWidget<'a, Message> {
-    surface: Element<'a, Message>,
-    fullscreen: bool,
-    open: bool,
-    on_press_outside: Option<Message>,
-    spring: Spring,
-}
-
-impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for DialogWidget<'a, Message>
-where
-    Message: 'a + Clone,
-{
-    fn tag(&self) -> tree::Tag {
-        tree::Tag::of::<State>()
-    }
-
-    fn state(&self) -> tree::State {
-        let now = Instant::now();
-        let mut progress = SpringValue::new(0.0, self.spring, now);
-        progress.reset(f32::from(self.open), now);
-
-        tree::State::new(State {
-            progress,
-            surface_tree: None,
-        })
-    }
-
-    fn size(&self) -> Size<Length> {
-        Size::new(Length::Shrink, Length::Shrink)
-    }
-
-    fn layout(&mut self, _tree: &mut Tree, _renderer: &iced::Renderer, limits: &Limits) -> Node {
-        Node::new(limits.resolve(Length::Shrink, Length::Shrink, Size::ZERO))
-    }
-
-    fn draw(
-        &self,
-        _tree: &Tree,
-        _renderer: &mut iced::Renderer,
-        _theme: &iced::Theme,
-        _style: &renderer::Style,
-        _layout: Layout<'_>,
-        _cursor: mouse::Cursor,
-        _viewport: &Rectangle,
-    ) {
-    }
-
-    fn overlay<'b>(
-        &'b mut self,
-        tree: &'b mut Tree,
-        _layout: Layout<'b>,
-        _renderer: &iced::Renderer,
-        _viewport: &Rectangle,
-        _translation: Vector,
-    ) -> Option<overlay::Element<'b, Message, iced::Theme, iced::Renderer>> {
-        let state = tree.state.downcast_mut::<State>();
-
-        if !self.open && state.progress.value() <= HIDDEN_PROGRESS {
-            state.surface_tree = None;
-            return None;
-        }
-
-        if let Some(surface_tree) = &mut state.surface_tree {
-            surface_tree.diff(self.surface.as_widget());
-        } else {
-            state.surface_tree = Some(Tree::new(self.surface.as_widget()));
-        }
-
-        let spring = self.spring;
-        let DialogWidget {
-            surface,
-            fullscreen,
-            open,
-            on_press_outside,
-            ..
-        } = self;
-        let State {
-            progress,
-            surface_tree,
-        } = state;
-
-        Some(overlay::Element::new(Box::new(DialogOverlay {
-            surface,
-            tree: surface_tree.as_mut()?,
-            progress,
-            spring,
-            fullscreen: *fullscreen,
-            open: *open,
-            on_press_outside: on_press_outside.as_ref(),
-        })))
-    }
-}
-
-struct DialogOverlay<'a, 'b, Message> {
-    surface: &'b mut Element<'a, Message>,
-    tree: &'b mut Tree,
-    progress: &'b mut SpringValue<f32>,
-    spring: Spring,
-    fullscreen: bool,
-    open: bool,
-    on_press_outside: Option<&'b Message>,
-}
-
-impl<Message> DialogOverlay<'_, '_, Message> {
-    fn is_visible(&self) -> bool {
-        self.open || self.progress.value() > HIDDEN_PROGRESS
-    }
-}
-
-impl<'a, 'b, Message> overlay::Overlay<Message, iced::Theme, iced::Renderer>
-    for DialogOverlay<'a, 'b, Message>
-where
-    Message: 'a + Clone,
-{
-    fn layout(&mut self, renderer: &iced::Renderer, bounds: Size) -> Node {
-        if self.fullscreen {
-            let limits = Limits::new(Size::ZERO, bounds);
-            let surface = self
-                .surface
-                .as_widget_mut()
-                .layout(self.tree, renderer, &limits)
-                .move_to(Point::new(0.0, 0.0));
-
-            return Node::with_children(bounds, vec![surface]);
-        }
-
-        let available = placement::inset(bounds, PADDING);
-        let limits = Limits::new(Size::ZERO, available);
-
-        let node = self
-            .surface
-            .as_widget_mut()
-            .layout(self.tree, renderer, &limits);
-        let size = node.size();
-
-        let surface = node.move_to(placement::centered_in(bounds, size));
-
-        // The overlay spans the whole window so that the scrim and the
-        // dialog's shadow are not clipped; the surface is the only child.
-        Node::with_children(bounds, vec![surface])
-    }
-
-    fn draw(
-        &self,
-        renderer: &mut iced::Renderer,
-        theme: &iced::Theme,
-        style: &renderer::Style,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-    ) {
-        let progress = self.progress.value();
-
-        if progress <= HIDDEN_PROGRESS {
-            return;
-        }
-
-        // NOTE: The viewport must be derived from the passed layout, not from
-        // `layout()`, because `UserInterface::draw` reuses the layout computed
-        // during `update` without calling `layout()` again.
-        let viewport = layout.bounds();
-        let progress = progress.clamp(0.0, 1.0);
-
-        renderer.fill_quad(
-            Quad {
-                bounds: viewport,
-                ..Default::default()
-            },
-            color!(0x000000).scale_alpha(SCRIM_ALPHA * progress),
-        );
-
-        let surface_layout = layout.child(0);
-        // A fullscreen surface already covers the whole window, so growing it
-        // from zero looks exactly like a regular dialog opening.
-        let bounds = surface_layout.bounds();
-        let center = bounds.center();
-        // Animating the scale all the way to zero is what makes the dialog
-        // disappear smoothly, as the renderer cannot fade arbitrary content.
-        let scale = progress.max(0.01);
-
-        let transformation = Transformation::translate(center.x, center.y)
-            * Transformation::scale(scale)
-            * Transformation::translate(-center.x, -center.y);
-
-        renderer.with_transformation(transformation, |renderer| {
-            self.surface.as_widget().draw(
-                self.tree,
-                renderer,
-                theme,
-                style,
-                surface_layout,
-                cursor,
-                &viewport,
-            );
-        });
-    }
-
-    fn update(
-        &mut self,
-        event: &Event,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        renderer: &iced::Renderer,
-        clipboard: &mut dyn Clipboard,
-        shell: &mut Shell<'_, Message>,
-    ) {
-        let now = Instant::now();
-
-        self.progress.set_model(self.spring);
-        self.progress.set_target(f32::from(self.open), now);
-
-        if !self.progress.is_at_rest() {
-            shell.request_redraw();
-        }
-        self.progress.step(now);
-
-        if !self.is_visible() {
-            return;
-        }
-
-        let viewport = layout.bounds();
-        let surface_layout = layout.child(0);
-
-        self.surface.as_widget_mut().update(
-            self.tree,
-            event,
-            surface_layout,
-            cursor,
-            renderer,
-            clipboard,
-            shell,
-            &viewport,
-        );
-
-        let bounds = surface_layout.bounds();
-
-        let pressed_outside = match event {
-            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
-                cursor.position().map(|position| !bounds.contains(position))
-            }
-            Event::Touch(touch::Event::FingerPressed { position, .. }) => {
-                Some(!bounds.contains(*position))
-            }
-            _ => None,
-        };
-
-        if self.open
-            && pressed_outside == Some(true)
-            && let Some(on_press_outside) = self.on_press_outside
-        {
-            shell.publish(on_press_outside.clone());
-        }
-
-        let is_pointer_event = matches!(
-            event,
-            Event::Mouse(
-                mouse::Event::ButtonPressed(_)
-                    | mouse::Event::ButtonReleased(_)
-                    | mouse::Event::WheelScrolled { .. }
-            ) | Event::Touch(
-                touch::Event::FingerPressed { .. }
-                    | touch::Event::FingerLifted { .. }
-                    | touch::Event::FingerLost { .. }
-            )
-        );
-
-        // The dialog is modal: interactions must not reach the content below
-        // the scrim.
-        if is_pointer_event {
-            shell.capture_event();
-        }
-    }
-
-    fn operate(
-        &mut self,
-        layout: Layout<'_>,
-        renderer: &iced::Renderer,
-        operation: &mut dyn Operation,
-    ) {
-        self.surface
-            .as_widget_mut()
-            .operate(self.tree, layout.child(0), renderer, operation);
-    }
-
-    fn mouse_interaction(
-        &self,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
-        renderer: &iced::Renderer,
-    ) -> mouse::Interaction {
-        if !self.is_visible() {
-            return mouse::Interaction::None;
-        }
-
-        let surface_layout = layout.child(0);
-
-        let interaction = if cursor.is_over(surface_layout.bounds()) {
-            self.surface.as_widget().mouse_interaction(
-                self.tree,
-                surface_layout,
-                cursor,
-                &layout.bounds(),
-                renderer,
-            )
-        } else {
-            mouse::Interaction::None
-        };
-
-        // A visible dialog is modal, so it must never report `None` for the
-        // whole window. Otherwise `UserInterface` falls back to the content
-        // below the scrim and shows its cursor (for instance a pointer over a
-        // button that the dialog is drawn on top of). `Idle` is the neutral
-        // arrow cursor used over the scrim and the dialog's own background.
-        if interaction == mouse::Interaction::None {
-            mouse::Interaction::Idle
-        } else {
-            interaction
-        }
-    }
-
-    fn overlay<'c>(
-        &'c mut self,
-        layout: Layout<'c>,
-        renderer: &iced::Renderer,
-    ) -> Option<overlay::Element<'c, Message, iced::Theme, iced::Renderer>> {
-        let viewport = layout.bounds();
-
-        self.surface.as_widget_mut().overlay(
-            self.tree,
-            layout.child(0),
-            renderer,
-            &viewport,
-            Vector::ZERO,
-        )
+        surface
     }
 }

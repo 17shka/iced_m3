@@ -3,7 +3,7 @@ use iced::{
     widget::{column, container, row, text},
 };
 use iced_m3::theme::{Accent, ColorScheme, Theme};
-use iced_m3::widget::{Action, Badge, button, hybrid_icon::Icon, navrail, switch};
+use iced_m3::widget::{Badge, button, hybrid_icon::Icon, navrail, switch};
 
 #[derive(Clone)]
 pub enum Message {
@@ -126,7 +126,7 @@ impl Page {
             label: "Edit".into(),
             style: iced_m3::widget::fab::Style::fab_tonal(theme, Accent::Primary),
             label_size_scale: 1.0,
-            on_press: Action::Direct(Message::Noop),
+            on_press: Message::Noop,
         };
 
         let navrail_widget = iced_m3::widget::navrail(theme, navrail::Style::new(theme), items)
